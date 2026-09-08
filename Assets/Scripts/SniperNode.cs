@@ -9,6 +9,7 @@ public class SniperNode : MonoBehaviour, IHijackable
     [SerializeField] private float moveSpeed = 1.8f;
     [SerializeField] private float preferredDistance = 7f;
     [SerializeField] private float fireInterval = 2.5f;
+    public int scoreReward = 200;
 
     [Header("Combat References")]
     public GameObject projectilePrefab;
@@ -453,6 +454,15 @@ public class SniperNode : MonoBehaviour, IHijackable
         Collider2D col = GetComponent<Collider2D>();
         if (col != null) col.enabled = false;
 
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.AddScore(scoreReward);
+            GameManager.Instance.IncrementEnemiesEliminated();
+            GameManager.Instance.PlayEnemyHitSound();
+        }
+
+        SpawnDeathDebris();
+
         if (isHijacked)
         {
 #pragma warning disable 0618
@@ -465,6 +475,34 @@ public class SniperNode : MonoBehaviour, IHijackable
         }
 
         Destroy(gameObject);
+    }
+
+    private void SpawnDeathDebris()
+    {
+        GameObject debrisObj = new GameObject("SniperDebris");
+        debrisObj.transform.position = transform.position;
+        ParticleSystem ps = debrisObj.AddComponent<ParticleSystem>();
+        var main = ps.main;
+        main.startLifetime = 0.35f;
+        main.startSpeed = new ParticleSystem.MinMaxCurve(1.5f, 3.5f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.08f, 0.16f);
+        main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.984f, 0.443f, 0.522f, 1f), Color.white);
+        main.loop = false;
+        main.stopAction = ParticleSystemStopAction.Destroy;
+        var emission = ps.emission;
+        emission.rateOverTime = 0;
+        emission.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0f, 14) });
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Circle;
+        shape.radius = 0.2f;
+        ParticleSystemRenderer psr = debrisObj.GetComponent<ParticleSystemRenderer>();
+        if (psr != null)
+        {
+            psr.material = new Material(Shader.Find("Sprites/Default"));
+            psr.sortingOrder = 15;
+        }
+        ps.Play();
+        Destroy(debrisObj, 0.6f);
     }
 
     private void OnDestroy()

@@ -20,15 +20,15 @@ public class RaycastShooter : MonoBehaviour
             beamRenderer = GetComponent<LineRenderer>();
         }
 
-        if (enemyLayer.value == 0)
-        {
-            int enemyLayerIndex = LayerMask.NameToLayer("Enemy");
-            int enemiesLayerIndex = LayerMask.NameToLayer("Enemies");
-            int mask = 0;
-            if (enemyLayerIndex != -1) mask |= (1 << enemyLayerIndex);
-            if (enemiesLayerIndex != -1) mask |= (1 << enemiesLayerIndex);
-            enemyLayer = mask != 0 ? mask : ~0;
-        }
+        // Ensure triggers are queried by 2D Raycasts so projectiles are intercepted cleanly
+        Physics2D.queriesHitTriggers = true;
+
+        int enemyLayerIndex = LayerMask.NameToLayer("Enemy");
+        int enemiesLayerIndex = LayerMask.NameToLayer("Enemies");
+        int mask = enemyLayer.value;
+        if (enemyLayerIndex != -1) mask |= (1 << enemyLayerIndex);
+        if (enemiesLayerIndex != -1) mask |= (1 << enemiesLayerIndex);
+        enemyLayer = mask != 0 ? mask : ~0;
 
         if (beamRenderer != null)
         {
@@ -108,13 +108,9 @@ public class RaycastShooter : MonoBehaviour
                 else
                 {
                     EnemyProjectile proj = hit.collider.GetComponent<EnemyProjectile>() ?? hit.collider.GetComponentInParent<EnemyProjectile>();
-                    if (proj != null)
+                    if (proj != null && !proj.IsAllied)
                     {
-                        Destroy(proj.gameObject);
-                        if (GameManager.Instance != null)
-                        {
-                            GameManager.Instance.PlaySound(GameManager.Instance.enemyHitSFX);
-                        }
+                        proj.TakeDamage(damage);
                     }
                 }
             }

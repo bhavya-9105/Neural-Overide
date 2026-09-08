@@ -405,9 +405,9 @@ public class PlayerController : MonoBehaviour
             }
 
             EnemyProjectile proj = hit.collider.GetComponent<EnemyProjectile>() ?? hit.collider.GetComponentInParent<EnemyProjectile>();
-            if (proj != null)
+            if (proj != null && !proj.IsAllied)
             {
-                Destroy(proj.gameObject);
+                proj.TakeDamage(shootDamage);
             }
         }
 

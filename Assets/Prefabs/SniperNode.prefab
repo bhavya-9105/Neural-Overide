@@ -174,6 +174,7 @@ MonoBehaviour:
   moveSpeed: 1.8
   preferredDistance: 7
   fireInterval: 2.5
+  scoreReward: 200
   projectilePrefab: {fileID: 3363366407195457333, guid: fdb35a0cec4be1244beabf008331e01d, type: 3}
   hitFlashDuration: 0.05
   isHijacked: 0

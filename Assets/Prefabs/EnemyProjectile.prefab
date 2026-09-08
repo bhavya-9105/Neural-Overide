@@ -173,3 +173,5 @@ MonoBehaviour:
   speed: 5
   lifetime: 4
   damage: 1
+  health: 1
+  scoreReward: 50

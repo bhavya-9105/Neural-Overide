@@ -7,8 +7,13 @@ public class EnemyProjectile : MonoBehaviour
     [SerializeField] private float lifetime = 4f;
     [SerializeField] private int damage = 1;
 
+    [Header("Durability & Scoring")]
+    [SerializeField] private int health = 1;
+    public int scoreReward = 50;
+
     private Rigidbody2D rb;
     private Vector2 moveDirection = Vector2.right;
+    private bool isDestroyed = false;
     public bool IsAllied { get; set; } = false;
 
     public Vector2 MoveDirection
@@ -29,12 +34,26 @@ public class EnemyProjectile : MonoBehaviour
     private void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
+        if (rb == null) rb = gameObject.AddComponent<Rigidbody2D>();
         rb.gravityScale = 0f;
         rb.freezeRotation = true;
         rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
 
         CircleCollider2D col = GetComponent<CircleCollider2D>();
+        if (col == null)
+        {
+            col = gameObject.AddComponent<CircleCollider2D>();
+            col.radius = 0.25f;
+        }
         col.isTrigger = true;
+
+        // Ensure projectile is on a shootable layer ("Enemy" or "Enemies" or "Default")
+        int enemyLayerIndex = LayerMask.NameToLayer("Enemy");
+        if (enemyLayerIndex == -1) enemyLayerIndex = LayerMask.NameToLayer("Enemies");
+        if (enemyLayerIndex != -1 && (gameObject.layer == 0 || gameObject.layer == LayerMask.NameToLayer("Default")))
+        {
+            gameObject.layer = enemyLayerIndex;
+        }
     }
 
     private void Start()
@@ -122,5 +141,53 @@ public class EnemyProjectile : MonoBehaviour
         {
             Destroy(gameObject);
         }
+    }
+
+    public void TakeDamage(int damage)
+    {
+        if (isDestroyed) return;
+
+        health -= damage;
+        if (health <= 0)
+        {
+            isDestroyed = true;
+
+            if (GameManager.Instance != null)
+            {
+                GameManager.Instance.AddScore(scoreReward);
+                GameManager.Instance.PlayEnemyHitSound();
+            }
+
+            SpawnBurstDebris();
+            Destroy(gameObject);
+        }
+    }
+
+    private void SpawnBurstDebris()
+    {
+        GameObject debrisObj = new GameObject("ProjectileBurst");
+        debrisObj.transform.position = transform.position;
+        ParticleSystem ps = debrisObj.AddComponent<ParticleSystem>();
+        var main = ps.main;
+        main.startLifetime = 0.25f;
+        main.startSpeed = new ParticleSystem.MinMaxCurve(1.2f, 2.8f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.06f, 0.12f);
+        main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 0.6f, 0.2f, 1f), Color.yellow);
+        main.loop = false;
+        main.stopAction = ParticleSystemStopAction.Destroy;
+        var emission = ps.emission;
+        emission.rateOverTime = 0;
+        emission.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0f, 8) });
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Circle;
+        shape.radius = 0.1f;
+        ParticleSystemRenderer psr = debrisObj.GetComponent<ParticleSystemRenderer>();
+        if (psr != null)
+        {
+            psr.material = new Material(Shader.Find("Sprites/Default"));
+            psr.sortingOrder = 15;
+        }
+        ps.Play();
+        Destroy(debrisObj, 0.5f);
     }
 }

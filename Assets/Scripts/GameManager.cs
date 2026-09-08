@@ -757,7 +757,12 @@ public class GameManager : MonoBehaviour
 
     // ==================== GAME OVER & VICTORY LOGIC ====================
 
-    public void AddScore(int baseScore = 100)
+    public void AddScore()
+    {
+        AddScore(100);
+    }
+
+    public void AddScore(int points)
     {
         if (currentState != State.Playing)
         {
@@ -780,9 +785,13 @@ public class GameManager : MonoBehaviour
             currentMultiplier = 1;
         }
 
-        int finalPoints = baseScore * currentMultiplier;
+        int finalPoints = points * Mathf.Max(1, currentMultiplier);
         currentScore += finalPoints;
-        UpdateScoreDisplay();
+
+        if (scoreText != null)
+        {
+            scoreText.text = "SCORE: " + currentScore;
+        }
 
         if (comboText != null)
         {
