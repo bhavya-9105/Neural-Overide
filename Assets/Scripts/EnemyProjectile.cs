@@ -11,6 +11,8 @@ public class EnemyProjectile : MonoBehaviour
     [SerializeField] private int health = 1;
     public int scoreReward = 50;
 
+    public int Health { get => health; set => health = value; }
+
     private Rigidbody2D rb;
     private Vector2 moveDirection = Vector2.right;
     private bool isDestroyed = false;
@@ -45,15 +47,22 @@ public class EnemyProjectile : MonoBehaviour
             col = gameObject.AddComponent<CircleCollider2D>();
             col.radius = 0.25f;
         }
-        col.isTrigger = true;
+        col.isTrigger = false;
 
-        // Ensure projectile is on a shootable layer ("Enemy" or "Enemies" or "Default")
+        // Ensure projectile is on a shootable layer ("Enemies" or "Enemy")
         int enemyLayerIndex = LayerMask.NameToLayer("Enemy");
-        if (enemyLayerIndex == -1) enemyLayerIndex = LayerMask.NameToLayer("Enemies");
+        if (enemyLayerIndex == -1) enemyLayerIndex = LayerMask.NameToLayer("Enemy");
         if (enemyLayerIndex != -1 && (gameObject.layer == 0 || gameObject.layer == LayerMask.NameToLayer("Default")))
         {
             gameObject.layer = enemyLayerIndex;
         }
+
+        MiniMapMarker marker = GetComponent<MiniMapMarker>();
+        if (marker == null)
+        {
+            marker = gameObject.AddComponent<MiniMapMarker>();
+        }
+        marker.markerType = MiniMapMarker.MarkerType.Grenade;
     }
 
     private void Start()
@@ -77,7 +86,23 @@ public class EnemyProjectile : MonoBehaviour
         Destroy(gameObject, lifetime);
     }
 
+    private void OnCollisionEnter2D(Collision2D collision)
+    {
+        if (collision != null && collision.gameObject != null)
+        {
+            HandleCollision(collision.gameObject);
+        }
+    }
+
     private void OnTriggerEnter2D(Collider2D other)
+    {
+        if (other != null && other.gameObject != null)
+        {
+            HandleCollision(other.gameObject);
+        }
+    }
+
+    private void HandleCollision(GameObject other)
     {
         if (other == null) return;
 
@@ -103,7 +128,8 @@ public class EnemyProjectile : MonoBehaviour
                 return;
             }
 
-            if (!other.isTrigger)
+            Collider2D c = other.GetComponent<Collider2D>();
+            if (c != null && !c.isTrigger)
             {
                 Destroy(gameObject);
             }
@@ -137,7 +163,8 @@ public class EnemyProjectile : MonoBehaviour
         }
 
         // If hits arena walls/obstacles
-        if (!other.isTrigger)
+        Collider2D otherCol = other.GetComponent<Collider2D>();
+        if (otherCol != null && !otherCol.isTrigger)
         {
             Destroy(gameObject);
         }

@@ -47,6 +47,13 @@ public class PlayerController : MonoBehaviour
     private Rigidbody2D rb;
     private Vector2 moveInput;
 
+    [Header("4-Directional Aim Sprites")]
+    public Sprite spriteFront; // Down shooting sprite
+    public Sprite spriteBack;  // Up shooting sprite
+    public Sprite spriteSide;  // Side profile sprite
+    public Transform muzzlePoint; // Child transform for weapon fire origin
+    private SpriteRenderer spriteRenderer;
+
     [Header("Arena Boundary Settings")]
     [SerializeField] private float halfWidth = 18f;
     [SerializeField] private float halfHeight = 10f;
@@ -69,6 +76,25 @@ public class PlayerController : MonoBehaviour
             rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
         }
 
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        transform.rotation = Quaternion.identity;
+
+        if (muzzlePoint == null)
+        {
+            Transform mChild = transform.Find("MuzzlePoint");
+            if (mChild != null)
+            {
+                muzzlePoint = mChild;
+            }
+            else
+            {
+                GameObject mObj = new GameObject("MuzzlePoint");
+                mObj.transform.SetParent(transform);
+                mObj.transform.localPosition = new Vector3(0f, 0.6f, 0f);
+                muzzlePoint = mObj.transform;
+            }
+        }
+
         if (animator == null)
         {
             animator = GetComponent<Animator>();
@@ -83,6 +109,31 @@ public class PlayerController : MonoBehaviour
         currentHealth = maxHealth;
         IsDead = false;
         isInvulnerable = false;
+
+        MiniMapMarker marker = GetComponent<MiniMapMarker>();
+        if (marker == null)
+        {
+            marker = gameObject.AddComponent<MiniMapMarker>();
+        }
+        marker.markerType = MiniMapMarker.MarkerType.Player;
+    }
+
+    private void Start()
+    {
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponent<SpriteRenderer>();
+        }
+        transform.rotation = Quaternion.identity;
+
+        if (muzzlePoint == null)
+        {
+            Transform mChild = transform.Find("MuzzlePoint");
+            if (mChild != null)
+            {
+                muzzlePoint = mChild;
+            }
+        }
     }
 
     private void Update()
@@ -97,6 +148,12 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
+        // Lock Transform rotation: do NOT rotate player main transform
+        transform.rotation = Quaternion.identity;
+
+        // 4-Directional Aim & Sprite Swapping
+        UpdateAimAndSprite();
+
         // 8-directional input via Input.GetAxisRaw("Horizontal") and "Vertical", normalized
         float horizontal = Input.GetAxisRaw("Horizontal");
         float vertical = Input.GetAxisRaw("Vertical");
@@ -108,8 +165,6 @@ public class PlayerController : MonoBehaviour
             animator.SetBool("IsMoving", moveInput.sqrMagnitude > 0f);
         }
 
-        // Note: Movement and aiming are decoupled. Player only rotates towards target on attack via LookAt().
-
         // Left-click fires Raycast Beam (handled by RaycastShooter if present)
         if (GetComponent<RaycastShooter>() == null && Input.GetMouseButtonDown(0))
         {
@@ -118,6 +173,74 @@ public class PlayerController : MonoBehaviour
 
         // Hard Position Clamping Fallback
         ClampPositionToBounds();
+    }
+
+    private void LateUpdate()
+    {
+        // Enforce locked rotation on main transform across all circumstances
+        transform.rotation = Quaternion.identity;
+    }
+
+    /// <summary>
+    /// Calculates angle toward mouse cursor in world space and updates 4-directional sprite state and muzzlePoint.
+    /// </summary>
+    private void UpdateAimAndSprite()
+    {
+        Camera mainCam = Camera.main;
+        if (mainCam == null) return;
+
+        Vector3 mouseScreen = Input.mousePosition;
+        mouseScreen.z = -mainCam.transform.position.z;
+        Vector3 mousePos = mainCam.ScreenToWorldPoint(mouseScreen);
+        Vector2 aimDir = ((Vector2)mousePos - (Vector2)transform.position).normalized;
+        if (aimDir == Vector2.zero)
+        {
+            aimDir = Vector2.up;
+        }
+
+        ApplyAimDirection(aimDir);
+    }
+
+    /// <summary>
+    /// Applies 4-directional sprite swapping and positions the muzzlePoint towards aimDir.
+    /// </summary>
+    public void ApplyAimDirection(Vector2 aimDir)
+    {
+        float angle = Mathf.Atan2(aimDir.y, aimDir.x) * Mathf.Rad2Deg;
+
+        if (spriteRenderer != null)
+        {
+            if (angle >= 67.5f && angle < 112.5f)
+            {
+                // UP (67.5° <= angle < 112.5°)
+                if (spriteBack != null) spriteRenderer.sprite = spriteBack;
+                spriteRenderer.flipX = false;
+            }
+            else if (angle >= -112.5f && angle < -67.5f)
+            {
+                // DOWN (-112.5° <= angle < -67.5°)
+                if (spriteFront != null) spriteRenderer.sprite = spriteFront;
+                spriteRenderer.flipX = false;
+            }
+            else if (angle >= -67.5f && angle < 67.5f)
+            {
+                // RIGHT (-67.5° <= angle < 67.5°)
+                if (spriteSide != null) spriteRenderer.sprite = spriteSide;
+                spriteRenderer.flipX = false;
+            }
+            else
+            {
+                // LEFT (angle >= 112.5° || angle < -112.5°)
+                if (spriteSide != null) spriteRenderer.sprite = spriteSide;
+                spriteRenderer.flipX = true;
+            }
+        }
+
+        if (muzzlePoint != null)
+        {
+            muzzlePoint.position = (Vector2)transform.position + aimDir * 0.6f;
+            muzzlePoint.up = aimDir;
+        }
     }
 
     private void FixedUpdate()
@@ -159,16 +282,18 @@ public class PlayerController : MonoBehaviour
     }
 
     /// <summary>
-    /// Faces the mouse direction ONLY when an attack is executed.
+    /// Faces the target direction by swapping 4-directional sprites and positioning muzzlePoint.
+    /// Does NOT rotate the main transform.
     /// </summary>
     public void LookAt(Vector2 targetWorldPosition)
     {
-        Vector2 direction = (targetWorldPosition - (Vector2)transform.position).normalized;
-        if (direction.sqrMagnitude > 0.0001f)
+        transform.rotation = Quaternion.identity;
+        Vector2 aimDir = (targetWorldPosition - (Vector2)transform.position).normalized;
+        if (aimDir == Vector2.zero)
         {
-            float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg - 90f;
-            transform.rotation = Quaternion.Euler(0f, 0f, angle);
+            aimDir = Vector2.up;
         }
+        ApplyAimDirection(aimDir);
     }
 
     /// <summary>
@@ -356,6 +481,18 @@ public class PlayerController : MonoBehaviour
         transform.rotation = Quaternion.identity;
         moveInput = Vector2.zero;
 
+        if (spriteRenderer != null && spriteFront != null)
+        {
+            spriteRenderer.sprite = spriteFront;
+            spriteRenderer.flipX = false;
+        }
+
+        if (muzzlePoint != null)
+        {
+            muzzlePoint.position = (Vector2)transform.position + Vector2.up * 0.6f;
+            muzzlePoint.up = Vector2.up;
+        }
+
         if (rb != null)
         {
 #pragma warning disable 0618
@@ -378,7 +515,7 @@ public class PlayerController : MonoBehaviour
         Vector3 mouseScreenPos = Input.mousePosition;
         Vector3 mouseWorldPos = mainCamera.ScreenToWorldPoint(mouseScreenPos);
         LookAt(mouseWorldPos);
-        Vector2 origin = transform.position;
+        Vector2 origin = muzzlePoint != null ? (Vector2)muzzlePoint.position : (Vector2)transform.position;
         Vector2 direction = ((Vector2)mouseWorldPos - origin).normalized;
 
         if (direction == Vector2.zero) direction = transform.right;
@@ -415,6 +552,14 @@ public class PlayerController : MonoBehaviour
         {
             if (beamCoroutine != null) StopCoroutine(beamCoroutine);
             beamCoroutine = StartCoroutine(ShowBeam(origin, hitPoint));
+        }
+
+        // Radar line-of-fire indicator
+        MiniMapMarker marker = GetComponent<MiniMapMarker>();
+        if (marker != null)
+        {
+            ColorUtility.TryParseHtmlString("#06B6D4", out Color cyanCol);
+            marker.TriggerFiringRay(direction, shootRange, cyanCol);
         }
 
         if (GameManager.Instance != null)

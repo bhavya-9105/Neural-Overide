@@ -56,6 +56,26 @@ public class EnemyChaser : MonoBehaviour, IHijackable
 
         currentHealth = maxHealth;
         originalScale = transform.localScale;
+
+        int enemiesLayer = LayerMask.NameToLayer("Enemy");
+        if (enemiesLayer == -1) enemiesLayer = LayerMask.NameToLayer("Enemy");
+        if (enemiesLayer != -1 && (gameObject.layer == 0 || gameObject.layer == LayerMask.NameToLayer("Default")))
+        {
+            gameObject.layer = enemiesLayer;
+        }
+
+        MiniMapMarker marker = GetComponent<MiniMapMarker>();
+        if (marker == null)
+        {
+            marker = gameObject.AddComponent<MiniMapMarker>();
+        }
+        marker.markerType = MiniMapMarker.MarkerType.Chaser;
+
+        ChaserNode chaserNode = GetComponent<ChaserNode>();
+        if (chaserNode == null)
+        {
+            gameObject.AddComponent<ChaserNode>();
+        }
     }
 
     public static readonly Color DefaultEnemyColor = new Color(0.984f, 0.443f, 0.522f, 1f); // Coral #FB7185

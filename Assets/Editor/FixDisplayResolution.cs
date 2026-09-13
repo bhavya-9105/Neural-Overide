@@ -14,7 +14,6 @@ namespace GameJam.Editor
 {
     public static class FixDisplayResolution
     {
-        [MenuItem("GameJam/Enforce Ultra Clean HD Resolution")]
         public static void EnforceUltraCleanHDResolution()
         {
             Debug.Log("[GameJam Resolution] Starting Enforce Ultra Clean HD Resolution...");
@@ -315,17 +314,17 @@ namespace GameJam.Editor
                 }
                 else if (name == "Multiplier_Text")
                 {
-                    tmp.fontSize = 22f;
+                    tmp.fontSize = 20f;
                     tmp.alignment = TextAlignmentOptions.Right;
                 }
                 else if (name == "Hijack_Text")
                 {
-                    tmp.fontSize = 22f;
+                    tmp.fontSize = 20f;
                     tmp.alignment = TextAlignmentOptions.Left;
                 }
                 else if (name == "HP_Text")
                 {
-                    tmp.fontSize = 20f;
+                    tmp.fontSize = 18f;
                     tmp.alignment = TextAlignmentOptions.Center;
                 }
                 else if (name == "Subtitle_Text")

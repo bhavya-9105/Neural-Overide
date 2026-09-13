@@ -9,8 +9,8 @@ public class WaveSpawner : MonoBehaviour
     [SerializeField] private Transform player;
 
     [Header("Spawn Settings")]
-    [SerializeField] private GameObject enemyPrefab;
-    public GameObject sniperPrefab;
+    [SerializeField] public GameObject chaserPrefab;
+    [SerializeField] public GameObject sniperPrefab;
     [SerializeField] private float spawnDistance = 9f;
     [SerializeField] private float initialSpawnInterval = 1.5f;
     [SerializeField] private float minSpawnInterval = 0.5f;
@@ -28,7 +28,8 @@ public class WaveSpawner : MonoBehaviour
 
     public Transform Player { get => player; set => player = value; }
     public Transform PlayerTransform { get => player; set => player = value; }
-    public GameObject EnemyPrefab { get => enemyPrefab; set => enemyPrefab = value; }
+    public GameObject ChaserPrefab { get => chaserPrefab; set => chaserPrefab = value; }
+    public GameObject EnemyPrefab { get => chaserPrefab; set => chaserPrefab = value; }
     public GameObject SniperPrefab { get => sniperPrefab; set => sniperPrefab = value; }
     public float SpawnDistance { get => spawnDistance; set => spawnDistance = value; }
     public float InitialSpawnInterval { get => initialSpawnInterval; set => initialSpawnInterval = value; }
@@ -114,7 +115,7 @@ public class WaveSpawner : MonoBehaviour
             }
         }
 
-        if (enemyPrefab == null && sniperPrefab == null)
+        if (chaserPrefab == null && sniperPrefab == null)
         {
             return;
         }
@@ -167,16 +168,7 @@ public class WaveSpawner : MonoBehaviour
             if (player == null) return;
         }
 
-        // Chance to spawn sniperPrefab instead of EnemyChaser based on difficulty
-        float sniperChance = sniperSpawnChance;
-
-        GameObject prefabToSpawn = (sniperPrefab != null && Random.value < sniperChance) ? sniperPrefab : enemyPrefab;
-        if (prefabToSpawn == null)
-        {
-            prefabToSpawn = enemyPrefab != null ? enemyPrefab : sniperPrefab;
-        }
-
-        if (prefabToSpawn == null)
+        if (chaserPrefab == null && sniperPrefab == null)
         {
             return;
         }
@@ -184,9 +176,22 @@ public class WaveSpawner : MonoBehaviour
         // Ensure enemy spawn coordinates originate along the outer perimeter
         // at distance just outside halfWidth/halfHeight so enemies spawn outside and enter through the boundary line
         Vector3 spawnPosition = GetRandomOuterPerimeterPosition();
+        GameObject spawnedEnemy = null;
 
-        GameObject spawnedEnemy = Instantiate(prefabToSpawn, spawnPosition, Quaternion.identity);
-        StartCoroutine(HandleEnemyArenaEntry(spawnedEnemy));
+        float sniperChance = sniperSpawnChance;
+        if (sniperPrefab != null && (Random.value < sniperChance || chaserPrefab == null))
+        {
+            spawnedEnemy = Instantiate(sniperPrefab, spawnPosition, Quaternion.identity);
+        }
+        else if (chaserPrefab != null)
+        {
+            spawnedEnemy = Instantiate(chaserPrefab, spawnPosition, Quaternion.identity);
+        }
+
+        if (spawnedEnemy != null)
+        {
+            StartCoroutine(HandleEnemyArenaEntry(spawnedEnemy));
+        }
     }
 
     private Vector3 GetRandomOuterPerimeterPosition()

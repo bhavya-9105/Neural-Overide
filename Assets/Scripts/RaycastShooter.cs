@@ -7,6 +7,7 @@ public class RaycastShooter : MonoBehaviour
     public float fireRate = 0.2f;
     public float weaponRange = 15f;
     public int damage = 1;
+    public LayerMask enemyLayerMask;
     public LayerMask enemyLayer;
     public LineRenderer beamRenderer;
 
@@ -23,18 +24,48 @@ public class RaycastShooter : MonoBehaviour
         // Ensure triggers are queried by 2D Raycasts so projectiles are intercepted cleanly
         Physics2D.queriesHitTriggers = true;
 
-        int enemyLayerIndex = LayerMask.NameToLayer("Enemy");
-        int enemiesLayerIndex = LayerMask.NameToLayer("Enemies");
-        int mask = enemyLayer.value;
-        if (enemyLayerIndex != -1) mask |= (1 << enemyLayerIndex);
-        if (enemiesLayerIndex != -1) mask |= (1 << enemiesLayerIndex);
-        enemyLayer = mask != 0 ? mask : ~0;
+        EnforceEnemyLayerMask();
 
         if (beamRenderer != null)
         {
             beamRenderer.sortingOrder = 10;
             beamRenderer.enabled = false;
         }
+    }
+
+    private void Start()
+    {
+        EnforceEnemyLayerMask();
+    }
+
+    /// <summary>
+    /// Strictly locks enemyLayerMask to detect ONLY the "Enemies" layer.
+    /// Explicitly removes the "Default" layer or any other fallback layers from raycast evaluations under all conditions.
+    /// </summary>
+    private void EnforceEnemyLayerMask()
+    {
+        int mask = LayerMask.GetMask("Enemy");
+        if (mask == 0)
+        {
+            mask = LayerMask.GetMask("Enemy");
+        }
+        if (mask == 0)
+        {
+            int idx = LayerMask.NameToLayer("Enemy");
+            if (idx == -1) idx = LayerMask.NameToLayer("Enemy");
+            if (idx != -1) mask = (1 << idx);
+        }
+
+        // Explicitly strip Default layer or any non-enemy layers under all conditions
+        int defaultMask = LayerMask.GetMask("Default");
+        if (defaultMask != 0)
+        {
+            mask &= ~defaultMask;
+        }
+        mask &= ~1; // bit 0 is Default in Unity
+
+        enemyLayerMask = mask;
+        enemyLayer = mask;
     }
 
     private void Update()
@@ -76,9 +107,12 @@ public class RaycastShooter : MonoBehaviour
             aimDirection = transform.up;
         }
 
-        // Offset origin slightly so player's own collider never blocks the raycast
-        Vector2 rayOrigin = playerPos + aimDirection * 0.45f;
-        RaycastHit2D hit = Physics2D.Raycast(rayOrigin, aimDirection, weaponRange, enemyLayer);
+        // Offset origin from muzzlePoint or player center so player's own collider never blocks the raycast
+        Vector2 rayOrigin = (player != null && player.muzzlePoint != null)
+            ? (Vector2)player.muzzlePoint.position
+            : playerPos + aimDirection * 0.45f;
+        LayerMask targetMask = enemyLayerMask.value != 0 ? enemyLayerMask : enemyLayer;
+        RaycastHit2D hit = Physics2D.Raycast(rayOrigin, aimDirection, weaponRange, targetMask);
         Vector2 hitPoint = rayOrigin + aimDirection * weaponRange;
 
         if (hit.collider != null && hit.collider.gameObject != gameObject)
@@ -126,7 +160,15 @@ public class RaycastShooter : MonoBehaviour
         if (beamRenderer != null)
         {
             if (beamCoroutine != null) StopCoroutine(beamCoroutine);
-            beamCoroutine = StartCoroutine(ShowBeamRoutine(playerPos, hitPoint));
+            beamCoroutine = StartCoroutine(ShowBeamRoutine(rayOrigin, hitPoint));
+        }
+
+        // Radar line-of-fire indicator
+        MiniMapMarker marker = GetComponent<MiniMapMarker>();
+        if (marker != null)
+        {
+            ColorUtility.TryParseHtmlString("#06B6D4", out Color cyanCol);
+            marker.TriggerFiringRay(aimDirection, weaponRange, cyanCol);
         }
 
         // Camera shake and sound

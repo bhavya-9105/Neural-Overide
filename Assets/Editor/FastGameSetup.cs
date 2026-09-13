@@ -54,22 +54,19 @@ namespace GameJam.Editor
             // 4. Setup Camera with CameraFollow2D strictly targeting the Player in LateUpdate
             SetupCameraFollow(playerObj);
 
-            // 5. Create EnemyChaser GameObject and save as prefab (Layer = "Enemy", tint = #FB7185, Rigidbody2D gravityScale = 0)
-            GameObject enemyPrefab = SetupEnemyChaser(kenneyFolder, enemyLayerIndex);
+            // 5. Generates missing enemy prefabs in Assets/Prefabs/Enemies/
+            SetupEnemyPrefabs(kenneyFolder, enemyLayerIndex, out GameObject chaserPrefab, out GameObject sniperPrefab, out GameObject projectilePrefab);
 
-            // 6. Create SniperNode and EnemyProjectile prefabs
-            SetupSniperNodeAndProjectile(kenneyFolder, enemyLayerIndex, out GameObject sniperPrefab, out GameObject projectilePrefab);
+            // 6. Spawn or configure WaveSpawner GameObject and wire prefab references
+            SetupWaveSpawner(playerObj, chaserPrefab, sniperPrefab);
 
-            // 7. Spawn or configure WaveSpawner GameObject
-            SetupWaveSpawner(playerObj, enemyPrefab, sniperPrefab);
-
-            // 8. Generate arena boundary walls and visible yellow perimeter line (36x20 arena)
+            // 7. Generate arena boundary walls and visible yellow perimeter line (36x20 arena)
             SetupArenaBoundaries(36f, 20f);
 
-            // 9. Build Lightweight Canvas UI (StartPanel, Timer, Score, Combo, Health Bar, GameOverPanel, VictoryPanel) & _GameManager with Audio
+            // 8. Build Canvas UI (StartPanel, HUD with Military Radar Mini-Map, PausePanel, VictoryPanel) & GameManager
             SetupGameUIAndManager(playerObj);
 
-            // 10. Strict Scene Pruning: enforce ONLY the 7 required GameObjects
+            // 9. Strict Scene Pruning: enforce ONLY the 7 required GameObjects
             PruneSceneHierarchy();
 
             // Mark active scene dirty and save scenes and assets so changes persist
@@ -78,10 +75,9 @@ namespace GameJam.Editor
             AssetDatabase.SaveAssets();
 
             Selection.activeGameObject = playerObj;
-            Debug.Log("<color=green>[GameJam] Scene, Minimalist UI & Palette reset completed successfully!</color>");
+            Debug.Log("<color=green>[GameJam] Setup Scene & Sprites completed successfully! All prefabs, radar mini-map, and UI wired.</color>");
         }
 
-        [MenuItem("GameJam/Wire Victory & Next Level Button")]
         public static void WireVictoryAndNextLevelButton()
         {
             GameManager gm = Object.FindAnyObjectByType<GameManager>(FindObjectsInactive.Include);
@@ -124,6 +120,11 @@ namespace GameJam.Editor
                 btn = nextLvlTrans.gameObject.AddComponent<Button>();
             }
 
+            ContentSizeFitter csf = nextLvlTrans.GetComponent<ContentSizeFitter>();
+            if (csf != null) Object.DestroyImmediate(csf);
+            RectTransform nextLvlRt = nextLvlTrans.GetComponent<RectTransform>();
+            if (nextLvlRt != null) nextLvlRt.sizeDelta = new Vector2(520f, 60f);
+
             btn.transition = Selectable.Transition.ColorTint;
 
             while (btn.onClick.GetPersistentEventCount() > 0)
@@ -154,7 +155,6 @@ namespace GameJam.Editor
             Debug.Log("<color=green>[GameJam] Btn_NextLevel persistent listener and GameManager.nextLevelBtn wired successfully!</color>");
         }
 
-        [MenuItem("GameJam/Build Windows Standalone")]
         public static void BuildWindowsStandalone()
         {
             Debug.Log("[GameJam] Starting Windows Standalone Build...");
@@ -279,40 +279,26 @@ namespace GameJam.Editor
             EnsureTag(tagManager, "Player");
             EnsureTag(tagManager, "Enemy");
 
-            SerializedProperty layersProp = tagManager.FindProperty("layers");
-            int enemyLayerIndex = -1;
-
-            for (int i = 8; i < 32; i++)
-            {
-                SerializedProperty layerProp = layersProp.GetArrayElementAtIndex(i);
-                if (layerProp != null && layerProp.stringValue == "Enemy")
-                {
-                    enemyLayerIndex = i;
-                    break;
-                }
-            }
-
-            if (enemyLayerIndex == -1)
-            {
-                for (int i = 8; i < 32; i++)
-                {
-                    SerializedProperty layerProp = layersProp.GetArrayElementAtIndex(i);
-                    if (layerProp != null && string.IsNullOrEmpty(layerProp.stringValue))
-                    {
-                        layerProp.stringValue = "Enemy";
-                        enemyLayerIndex = i;
-                        break;
-                    }
-                }
-            }
+            int enemyLayerIndex = EnsureLayer(tagManager, "Enemies");
+            if (enemyLayerIndex == -1) enemyLayerIndex = EnsureLayer(tagManager, "Enemy");
+            EnsureLayer(tagManager, "Enemy");
+            EnsureLayer(tagManager, "Enemies");
+            EnsureLayer(tagManager, "MiniMap");
+            EnsureLayer(tagManager, "Boundary");
 
             tagManager.ApplyModifiedProperties();
             tagManager.Update();
             AssetDatabase.SaveAssets();
 
-            if (enemyLayerIndex == -1)
+            int enemiesLayer = LayerMask.NameToLayer("Enemies");
+            if (enemiesLayer != -1)
             {
-                enemyLayerIndex = LayerMask.NameToLayer("Enemy");
+                enemyLayerIndex = enemiesLayer;
+            }
+            else
+            {
+                int enLayer = LayerMask.NameToLayer("Enemy");
+                if (enLayer != -1) enemyLayerIndex = enLayer;
             }
 
             if (enemyLayerIndex == -1)
@@ -320,8 +306,33 @@ namespace GameJam.Editor
                 enemyLayerIndex = 8;
             }
 
-            Debug.Log($"[GameJam] Tags 'Player' & 'Enemy' verified. Layer 'Enemy' configured at index {enemyLayerIndex}.");
+            Debug.Log($"[GameJam] Tags & Layers verified. Layer 'Enemies' / 'Enemy' configured at index {enemyLayerIndex}.");
             return enemyLayerIndex;
+        }
+
+        private static int EnsureLayer(SerializedObject tagManager, string layerName)
+        {
+            SerializedProperty layersProp = tagManager.FindProperty("layers");
+            for (int i = 8; i < 32; i++)
+            {
+                SerializedProperty layerProp = layersProp.GetArrayElementAtIndex(i);
+                if (layerProp != null && layerProp.stringValue == layerName)
+                {
+                    return i;
+                }
+            }
+
+            for (int i = 8; i < 32; i++)
+            {
+                SerializedProperty layerProp = layersProp.GetArrayElementAtIndex(i);
+                if (layerProp != null && string.IsNullOrEmpty(layerProp.stringValue))
+                {
+                    layerProp.stringValue = layerName;
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private static void EnsureTag(SerializedObject tagManager, string tagName)
@@ -396,7 +407,499 @@ namespace GameJam.Editor
                 }
             }
 
+            // Setup MiniMapCamera child GameObject and Render Texture
+            SetupMiniMapCamera(cam);
+
             Debug.Log("[GameJam] Camera configured with CameraFollow2D tracking Player.");
+        }
+
+        private static void SetupMiniMapCamera(Camera mainCam)
+        {
+            Transform existingChild = mainCam != null ? mainCam.transform.Find("MiniMapCamera") : null;
+            GameObject miniMapCamObj;
+            if (existingChild != null)
+            {
+                miniMapCamObj = existingChild.gameObject;
+            }
+            else
+            {
+                GameObject existingRoot = GameObject.Find("MiniMapCamera");
+                if (existingRoot != null)
+                {
+                    miniMapCamObj = existingRoot;
+                }
+                else
+                {
+                    miniMapCamObj = new GameObject("MiniMapCamera");
+                    Undo.RegisterCreatedObjectUndo(miniMapCamObj, "Create MiniMapCamera");
+                }
+            }
+
+            if (mainCam != null)
+            {
+                miniMapCamObj.transform.SetParent(mainCam.transform);
+                miniMapCamObj.transform.localPosition = Vector3.zero;
+                miniMapCamObj.transform.localRotation = Quaternion.identity;
+                miniMapCamObj.transform.localScale = Vector3.one;
+            }
+
+            // Remove any AudioListener component so there's strictly only 1 AudioListener in the scene
+            AudioListener listener = miniMapCamObj.GetComponent<AudioListener>();
+            if (listener != null)
+            {
+                Object.DestroyImmediate(listener);
+            }
+
+            Camera miniMapCam = miniMapCamObj.GetComponent<Camera>();
+            if (miniMapCam == null)
+            {
+                miniMapCam = miniMapCamObj.AddComponent<Camera>();
+            }
+            miniMapCam.orthographic = true;
+            miniMapCam.orthographicSize = 12f;
+            miniMapCam.clearFlags = CameraClearFlags.SolidColor;
+            ColorUtility.TryParseHtmlString("#0A0F1D", out Color darkSlate);
+            miniMapCam.backgroundColor = darkSlate;
+            miniMapCam.depth = -2f;
+
+            // Culling mask: Include Default, Enemies, Player, Boundary, and a dedicated "MiniMap" layer
+            int cullingMask = 0;
+            string[] includeLayers = new string[] { "Default", "Enemies", "Enemy", "Player", "Boundary", "Obstacles", "MiniMap" };
+            foreach (string layerName in includeLayers)
+            {
+                int layer = LayerMask.NameToLayer(layerName);
+                if (layer != -1)
+                {
+                    cullingMask |= (1 << layer);
+                }
+            }
+            miniMapCam.cullingMask = cullingMask;
+
+            // Exclude MiniMap layer from main camera
+            if (mainCam != null)
+            {
+                int miniMapLayer = LayerMask.NameToLayer("MiniMap");
+                if (miniMapLayer != -1)
+                {
+                    mainCam.cullingMask &= ~(1 << miniMapLayer);
+                }
+            }
+
+            RenderTexture rt = GetOrCreateMiniMapRenderTexture();
+            miniMapCam.targetTexture = rt;
+
+            Debug.Log("[GameJam] MiniMapCamera configured (orthographic, size 12, solid color #0A0F1D, depth -2, targetTexture 256x256).");
+        }
+
+        private static RenderTexture GetOrCreateMiniMapRenderTexture()
+        {
+            string uiFolder = "Assets/UI";
+            if (!AssetDatabase.IsValidFolder(uiFolder))
+            {
+                AssetDatabase.CreateFolder("Assets", "UI");
+            }
+
+            string rtPath = "Assets/UI/MiniMapRenderTexture.renderTexture";
+            RenderTexture rt = AssetDatabase.LoadAssetAtPath<RenderTexture>(rtPath);
+            if (rt == null)
+            {
+                rt = new RenderTexture(256, 256, 16, RenderTextureFormat.ARGB32)
+                {
+                    name = "MiniMapRenderTexture",
+                    filterMode = FilterMode.Bilinear,
+                    wrapMode = TextureWrapMode.Clamp
+                };
+                AssetDatabase.CreateAsset(rt, rtPath);
+                AssetDatabase.SaveAssets();
+            }
+            else
+            {
+                if (rt.width != 256 || rt.height != 256)
+                {
+                    rt.Release();
+                    rt.width = 256;
+                    rt.height = 256;
+                    rt.Create();
+                    EditorUtility.SetDirty(rt);
+                }
+            }
+            return rt;
+        }
+
+        private static Sprite GetOrCreateRadarMaskSprite()
+        {
+            string path = "Assets/UI/RadarMask.png";
+            Sprite sp = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            if (sp != null) return sp;
+
+            int size = 512;
+            Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            tex.name = "RadarMask";
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Clamp;
+
+            float center = (size - 1) * 0.5f;
+            float radius = (size * 0.5f) - 4f;
+            Color[] pixels = new Color[size * size];
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+                    float alpha = Mathf.Clamp01((radius - dist) + 0.5f);
+                    pixels[y * size + x] = new Color(1f, 1f, 1f, alpha);
+                }
+            }
+
+            tex.SetPixels(pixels);
+            tex.Apply();
+
+            byte[] pngBytes = tex.EncodeToPNG();
+            string fullPath = Path.Combine(Application.dataPath, "UI/RadarMask.png");
+            string dir = Path.GetDirectoryName(fullPath);
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            File.WriteAllBytes(fullPath, pngBytes);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+
+            TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer != null)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                importer.spritePixelsPerUnit = 100f;
+                importer.filterMode = FilterMode.Bilinear;
+                importer.textureCompression = TextureImporterCompression.Uncompressed;
+                importer.SaveAndReimport();
+            }
+
+            return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        }
+
+        private static Sprite GetOrCreateRadarCrosshairsSprite()
+        {
+            string path = "Assets/UI/RadarCrosshairs.png";
+            Sprite sp = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            if (sp != null) return sp;
+
+            int size = 512;
+            Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            tex.name = "RadarCrosshairs";
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Clamp;
+
+            float center = (size - 1) * 0.5f;
+            float outerRadius = (size * 0.5f) - 6f; // ~250px
+            ColorUtility.TryParseHtmlString("#06B6D4", out Color cyan); // Vivid Cyan #06B6D4
+
+            Color[] pixels = new Color[size * size];
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = x - center;
+                    float dy = y - center;
+                    float dist = Mathf.Sqrt(dx * dx + dy * dy);
+
+                    float a = 0f;
+
+                    // 1. Crisp outer circular vector ring (width ~4px)
+                    float ringDist = Mathf.Abs(dist - outerRadius);
+                    if (ringDist <= 2.2f)
+                    {
+                        a = Mathf.Max(a, Mathf.Clamp01((2.2f - ringDist) / 1.0f));
+                    }
+
+                    // Secondary subtle accent ring (width ~1.2px) at outerRadius - 8
+                    float secRingDist = Mathf.Abs(dist - (outerRadius - 8f));
+                    if (secRingDist <= 1.2f)
+                    {
+                        a = Mathf.Max(a, Mathf.Clamp01((1.2f - secRingDist) / 1.0f) * 0.45f);
+                    }
+
+                    // 2. Faint concentric distance rings at 35% and 68%
+                    float cRing1 = Mathf.Abs(dist - (outerRadius * 0.35f));
+                    if (cRing1 <= 1.2f)
+                    {
+                        a = Mathf.Max(a, Mathf.Clamp01((1.2f - cRing1) / 1.0f) * 0.28f);
+                    }
+
+                    float cRing2 = Mathf.Abs(dist - (outerRadius * 0.68f));
+                    if (cRing2 <= 1.2f)
+                    {
+                        a = Mathf.Max(a, Mathf.Clamp01((1.2f - cRing2) / 1.0f) * 0.32f);
+                    }
+
+                    // 3. Dynamic 90-degree crosshairs (+ axis)
+                    if (dist <= outerRadius - 3f && dist >= 8f)
+                    {
+                        // Horizontal reticle
+                        float absDy = Mathf.Abs(dy);
+                        if (absDy <= 1.4f)
+                        {
+                            float lineAlpha = Mathf.Clamp01((1.4f - absDy) / 1.0f) * 0.85f;
+                            a = Mathf.Max(a, lineAlpha);
+                        }
+
+                        // Vertical reticle
+                        float absDx = Mathf.Abs(dx);
+                        if (absDx <= 1.4f)
+                        {
+                            float lineAlpha = Mathf.Clamp01((1.4f - absDx) / 1.0f) * 0.85f;
+                            a = Mathf.Max(a, lineAlpha);
+                        }
+
+                        // Crosshair tick marks on axes at 20%, 50%, 80%
+                        float[] tickDistances = new float[] { outerRadius * 0.20f, outerRadius * 0.50f, outerRadius * 0.80f };
+                        foreach (float td in tickDistances)
+                        {
+                            if (Mathf.Abs(Mathf.Abs(dx) - td) <= 1.0f && absDy <= 6f)
+                            {
+                                a = Mathf.Max(a, 0.75f);
+                            }
+                            if (Mathf.Abs(Mathf.Abs(dy) - td) <= 1.0f && absDx <= 6f)
+                            {
+                                a = Mathf.Max(a, 0.75f);
+                            }
+                        }
+                    }
+
+                    // Center reticle dot
+                    if (dist <= 2.5f)
+                    {
+                        a = Mathf.Max(a, Mathf.Clamp01((2.5f - dist) / 1.0f) * 0.9f);
+                    }
+
+                    // 4. Subtle angle tick marks (45, 135, 225, 315 deg)
+                    if (dist >= outerRadius - 10f && dist <= outerRadius - 2f)
+                    {
+                        float angleDiff = Mathf.Abs(Mathf.Abs(dx) - Mathf.Abs(dy));
+                        if (angleDiff <= 1.8f)
+                        {
+                            a = Mathf.Max(a, 0.55f);
+                        }
+                    }
+
+                    if (a > 0f)
+                    {
+                        pixels[y * size + x] = new Color(cyan.r, cyan.g, cyan.b, a);
+                    }
+                    else
+                    {
+                        pixels[y * size + x] = Color.clear;
+                    }
+                }
+            }
+
+            tex.SetPixels(pixels);
+            tex.Apply();
+
+            byte[] pngBytes = tex.EncodeToPNG();
+            string fullPath = Path.Combine(Application.dataPath, "UI/RadarCrosshairs.png");
+            string dir = Path.GetDirectoryName(fullPath);
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            File.WriteAllBytes(fullPath, pngBytes);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+
+            TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer != null)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                importer.spritePixelsPerUnit = 100f;
+                importer.filterMode = FilterMode.Bilinear;
+                importer.textureCompression = TextureImporterCompression.Uncompressed;
+                importer.SaveAndReimport();
+            }
+
+            return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        }
+
+        private static void GetOrCreatePlayerDirectionalSprites(out Sprite front, out Sprite back, out Sprite side)
+        {
+            string playerFolder = "Assets/Sprites/Player";
+            if (!AssetDatabase.IsValidFolder("Assets/Sprites"))
+            {
+                AssetDatabase.CreateFolder("Assets", "Sprites");
+            }
+            if (!AssetDatabase.IsValidFolder(playerFolder))
+            {
+                AssetDatabase.CreateFolder("Assets/Sprites", "Player");
+            }
+
+            string frontPath = $"{playerFolder}/Player_Front.png";
+            string backPath = $"{playerFolder}/Player_Back.png";
+            string sidePath = $"{playerFolder}/Player_Side.png";
+
+            front = AssetDatabase.LoadAssetAtPath<Sprite>(frontPath);
+            back = AssetDatabase.LoadAssetAtPath<Sprite>(backPath);
+            side = AssetDatabase.LoadAssetAtPath<Sprite>(sidePath);
+
+            if (front != null && back != null && side != null)
+            {
+                return;
+            }
+
+            // Create pixel-art textures (16x16)
+            Color cClear = Color.clear;
+            Color cDark = new Color(15f / 255f, 23f / 255f, 42f / 255f, 1f);       // #0F172A Boot soles
+            Color cArmorDark = new Color(30f / 255f, 41f / 255f, 59f / 255f, 1f);   // #1E293B Dark Charcoal Suit
+            Color cArmorMid = new Color(15f / 255f, 118f / 255f, 110f / 255f, 1f);  // #0F766E Deep Teal Armor
+            Color cArmorBright = new Color(13f / 255f, 148f / 255f, 136f / 255f, 1f);// #0D9488 Vibrant Teal Plates
+            Color cCyanGlow = new Color(34f / 255f, 211f / 255f, 238f / 255f, 1f);  // #22D3EE Cyan Visor & Energy
+            Color cElectricCyan = new Color(6f / 255f, 182f / 255f, 212f / 255f, 1f);// #06B6D4 Electric Cyan
+            Color cTrimSilver = new Color(148f / 255f, 163f / 255f, 184f / 255f, 1f);// #94A3B8 Tech Silver
+            Color cGunMetal = new Color(51f / 255f, 65f / 255f, 85f / 255f, 1f);    // #334155 Weapon Steel
+            Color cHighlightWhite = new Color(1f, 1f, 1f, 1f);                       // Visor reflection
+
+            // --- 1. FRONT SPRITE (Facing Down) ---
+            Texture2D texFront = new Texture2D(16, 16, TextureFormat.RGBA32, false);
+            texFront.filterMode = FilterMode.Point;
+            Color[] pFront = new Color[16 * 16];
+            for (int i = 0; i < pFront.Length; i++) pFront[i] = cClear;
+
+            void SetPixelFront(int x, int y, Color c) { if (x >= 0 && x < 16 && y >= 0 && y < 16) pFront[y * 16 + x] = c; }
+            void FillRowFront(int y, int xStart, int xEnd, Color c) { for (int x = xStart; x <= xEnd; x++) SetPixelFront(x, y, c); }
+
+            FillRowFront(15, 6, 9, cArmorBright);
+            FillRowFront(14, 5, 10, cArmorMid);
+            FillRowFront(13, 5, 10, cArmorMid);
+            SetPixelFront(7, 13, cTrimSilver); SetPixelFront(8, 13, cTrimSilver);
+            FillRowFront(12, 5, 10, cCyanGlow);
+            SetPixelFront(6, 12, cHighlightWhite);
+            FillRowFront(11, 6, 9, cArmorDark);
+            FillRowFront(10, 4, 11, cArmorMid);
+            SetPixelFront(7, 10, cArmorDark); SetPixelFront(8, 10, cArmorDark);
+            FillRowFront(9, 3, 5, cArmorDark);
+            FillRowFront(9, 6, 9, cArmorBright);
+            FillRowFront(9, 10, 12, cArmorDark);
+            SetPixelFront(7, 9, cCyanGlow); SetPixelFront(8, 9, cCyanGlow);
+            FillRowFront(8, 4, 11, cArmorDark);
+            FillRowFront(8, 7, 8, cGunMetal);
+            SetPixelFront(7, 8, cElectricCyan); SetPixelFront(8, 8, cElectricCyan);
+            FillRowFront(7, 5, 6, cArmorDark);
+            FillRowFront(7, 9, 10, cArmorDark);
+            SetPixelFront(7, 7, cTrimSilver); SetPixelFront(8, 7, cTrimSilver);
+            FillRowFront(6, 5, 6, cArmorMid);
+            FillRowFront(6, 9, 10, cArmorMid);
+            FillRowFront(5, 5, 6, cArmorBright);
+            FillRowFront(5, 9, 10, cArmorBright);
+            FillRowFront(4, 5, 6, cArmorMid);
+            FillRowFront(4, 9, 10, cArmorMid);
+            FillRowFront(3, 4, 6, cArmorDark);
+            FillRowFront(3, 9, 11, cArmorDark);
+            FillRowFront(2, 4, 6, cDark);
+            FillRowFront(2, 9, 11, cDark);
+
+            texFront.SetPixels(pFront);
+            texFront.Apply();
+            SaveTextureAndImportSprite(texFront, frontPath);
+
+            // --- 2. BACK SPRITE (Facing Up) ---
+            Texture2D texBack = new Texture2D(16, 16, TextureFormat.RGBA32, false);
+            texBack.filterMode = FilterMode.Point;
+            Color[] pBack = new Color[16 * 16];
+            for (int i = 0; i < pBack.Length; i++) pBack[i] = cClear;
+
+            void SetPixelBack(int x, int y, Color c) { if (x >= 0 && x < 16 && y >= 0 && y < 16) pBack[y * 16 + x] = c; }
+            void FillRowBack(int y, int xStart, int xEnd, Color c) { for (int x = xStart; x <= xEnd; x++) SetPixelBack(x, y, c); }
+
+            FillRowBack(15, 6, 9, cArmorBright);
+            FillRowBack(14, 5, 10, cArmorMid);
+            FillRowBack(13, 5, 10, cArmorMid);
+            SetPixelBack(7, 13, cArmorDark); SetPixelBack(8, 13, cArmorDark);
+            FillRowBack(12, 5, 10, cArmorMid);
+            FillRowBack(11, 6, 9, cArmorDark);
+            FillRowBack(10, 4, 11, cArmorMid);
+            SetPixelBack(6, 10, cTrimSilver); SetPixelBack(9, 10, cTrimSilver);
+            FillRowBack(9, 4, 11, cArmorDark);
+            SetPixelBack(6, 9, cCyanGlow); SetPixelBack(9, 9, cCyanGlow);
+            SetPixelBack(7, 9, cElectricCyan); SetPixelBack(8, 9, cElectricCyan);
+            FillRowBack(8, 5, 10, cGunMetal);
+            SetPixelBack(6, 8, cHighlightWhite); SetPixelBack(9, 8, cHighlightWhite);
+            FillRowBack(7, 5, 10, cArmorDark);
+            SetPixelBack(6, 7, cArmorBright); SetPixelBack(9, 7, cArmorBright);
+            FillRowBack(6, 5, 6, cArmorMid);
+            FillRowBack(6, 9, 10, cArmorMid);
+            FillRowBack(5, 5, 6, cArmorBright);
+            FillRowBack(5, 9, 10, cArmorBright);
+            FillRowBack(4, 5, 6, cArmorMid);
+            FillRowBack(4, 9, 10, cArmorMid);
+            FillRowBack(3, 4, 6, cArmorDark);
+            FillRowBack(3, 9, 11, cArmorDark);
+            FillRowBack(2, 4, 6, cDark);
+            FillRowBack(2, 9, 11, cDark);
+
+            texBack.SetPixels(pBack);
+            texBack.Apply();
+            SaveTextureAndImportSprite(texBack, backPath);
+
+            // --- 3. SIDE SPRITE (Facing Right) ---
+            Texture2D texSide = new Texture2D(16, 16, TextureFormat.RGBA32, false);
+            texSide.filterMode = FilterMode.Point;
+            Color[] pSide = new Color[16 * 16];
+            for (int i = 0; i < pSide.Length; i++) pSide[i] = cClear;
+
+            void SetPixelSide(int x, int y, Color c) { if (x >= 0 && x < 16 && y >= 0 && y < 16) pSide[y * 16 + x] = c; }
+            void FillRowSide(int y, int xStart, int xEnd, Color c) { for (int x = xStart; x <= xEnd; x++) SetPixelSide(x, y, c); }
+
+            FillRowSide(15, 5, 8, cArmorBright);
+            FillRowSide(14, 4, 9, cArmorMid);
+            FillRowSide(13, 4, 8, cArmorMid);
+            FillRowSide(13, 9, 10, cCyanGlow);
+            FillRowSide(12, 4, 7, cArmorMid);
+            FillRowSide(12, 8, 11, cCyanGlow);
+            SetPixelSide(10, 12, cHighlightWhite);
+            FillRowSide(11, 5, 10, cArmorDark);
+            FillRowSide(10, 4, 9, cArmorMid);
+            SetPixelSide(5, 10, cTrimSilver);
+            FillRowSide(9, 3, 9, cArmorDark);
+            FillRowSide(9, 10, 13, cGunMetal);
+            SetPixelSide(14, 9, cCyanGlow);
+            FillRowSide(8, 4, 8, cArmorDark);
+            FillRowSide(8, 9, 13, cGunMetal);
+            SetPixelSide(14, 8, cElectricCyan);
+            FillRowSide(7, 5, 9, cArmorDark);
+            SetPixelSide(7, 7, cArmorBright);
+            FillRowSide(6, 4, 6, cArmorMid);
+            FillRowSide(6, 8, 10, cArmorMid);
+            FillRowSide(5, 5, 6, cArmorBright);
+            FillRowSide(5, 9, 10, cArmorBright);
+            FillRowSide(4, 5, 6, cArmorMid);
+            FillRowSide(4, 8, 9, cArmorMid);
+            FillRowSide(3, 4, 7, cArmorDark);
+            FillRowSide(3, 8, 11, cArmorDark);
+            FillRowSide(2, 3, 7, cDark);
+            FillRowSide(2, 8, 12, cDark);
+
+            texSide.SetPixels(pSide);
+            texSide.Apply();
+            SaveTextureAndImportSprite(texSide, sidePath);
+
+            AssetDatabase.Refresh();
+            front = AssetDatabase.LoadAssetAtPath<Sprite>(frontPath);
+            back = AssetDatabase.LoadAssetAtPath<Sprite>(backPath);
+            side = AssetDatabase.LoadAssetAtPath<Sprite>(sidePath);
+        }
+
+        private static void SaveTextureAndImportSprite(Texture2D tex, string assetPath)
+        {
+            byte[] pngBytes = tex.EncodeToPNG();
+            string fullPath = Path.Combine(Application.dataPath, assetPath.Substring("Assets/".Length));
+            string dir = Path.GetDirectoryName(fullPath);
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            File.WriteAllBytes(fullPath, pngBytes);
+            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
+
+            TextureImporter importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+            if (importer != null)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                importer.spritePixelsPerUnit = 16f;
+                importer.filterMode = FilterMode.Point;
+                importer.textureCompression = TextureImporterCompression.Uncompressed;
+                importer.wrapMode = TextureWrapMode.Clamp;
+                importer.SaveAndReimport();
+            }
         }
 
         private static GameObject SetupPlayer(string folderPath, int enemyLayerIndex)
@@ -413,23 +916,31 @@ namespace GameJam.Editor
             }
 
             playerObj.transform.position = new Vector3(0f, -1000f, 0f);
+            playerObj.transform.rotation = Quaternion.identity;
             playerObj.tag = "Player";
 
-            // SpriteRenderer & Character sprite
+            // SpriteRenderer & 4-Directional Character Sprites
             SpriteRenderer sr = playerObj.GetComponent<SpriteRenderer>();
             if (sr == null)
             {
                 sr = playerObj.AddComponent<SpriteRenderer>();
             }
 
-            Sprite characterSprite = LoadSprite($"{folderPath}/Tiles/tile_0084.png")
-                ?? LoadSprite($"{folderPath}/Tiles/tile_0085.png")
-                ?? FindFirstSprite(folderPath);
+            GetOrCreatePlayerDirectionalSprites(out Sprite frontSprite, out Sprite backSprite, out Sprite sideSprite);
 
-            sr.sprite = characterSprite;
-            ColorUtility.TryParseHtmlString("#5EEAD4", out Color mintCyan);
-            sr.color = mintCyan;
-            sr.enabled = false;
+            sr.sprite = frontSprite;
+            sr.color = Color.white;
+            sr.enabled = true;
+
+            Transform muzzleTrans = playerObj.transform.Find("MuzzlePoint");
+            if (muzzleTrans == null)
+            {
+                GameObject muzzleObj = new GameObject("MuzzlePoint");
+                muzzleObj.transform.SetParent(playerObj.transform);
+                muzzleObj.transform.localPosition = new Vector3(0f, 0.6f, 0f);
+                muzzleTrans = muzzleObj.transform;
+            }
+            muzzleTrans.localPosition = new Vector3(0f, 0.6f, 0f);
 
             // Rigidbody2D: Continuous collision detection
             Rigidbody2D rb = playerObj.GetComponent<Rigidbody2D>();
@@ -456,6 +967,10 @@ namespace GameJam.Editor
             playerCtrl.currentHealth = 5;
             playerCtrl.HalfWidth = 18f;
             playerCtrl.HalfHeight = 10f;
+            playerCtrl.spriteFront = frontSprite;
+            playerCtrl.spriteBack = backSprite;
+            playerCtrl.spriteSide = sideSprite;
+            playerCtrl.muzzlePoint = muzzleTrans;
 
             // Strip legacy obsolete PulseAbility if present
             Component pulseComp = playerObj.GetComponent("PulseAbility");
@@ -467,15 +982,23 @@ namespace GameJam.Editor
             shooter.weaponRange = 15f;
             shooter.damage = 1;
 
-            int enemyMask = 0;
-            int defLayer = LayerMask.NameToLayer("Default");
-            int enLayer = LayerMask.NameToLayer("Enemy");
-            int ensLayer = LayerMask.NameToLayer("Enemies");
-            if (defLayer != -1) enemyMask |= (1 << defLayer);
-            if (enLayer != -1) enemyMask |= (1 << enLayer);
-            if (ensLayer != -1) enemyMask |= (1 << ensLayer);
-            if (enemyLayerIndex != -1) enemyMask |= (1 << enemyLayerIndex);
-            shooter.enemyLayer = enemyMask != 0 ? enemyMask : ~0;
+            int enemiesMask = LayerMask.GetMask("Enemies");
+            if (enemiesMask == 0) enemiesMask = LayerMask.GetMask("Enemy");
+            if (enemiesMask == 0 && enemyLayerIndex != -1) enemiesMask = (1 << enemyLayerIndex);
+            // Strictly exclude Default layer or any non-enemy layers under all conditions
+            int defaultMask = LayerMask.GetMask("Default");
+            if (defaultMask != 0) enemiesMask &= ~defaultMask;
+            enemiesMask &= ~1;
+
+            shooter.enemyLayer = enemiesMask;
+            shooter.enemyLayerMask = enemiesMask;
+
+            SerializedObject shooterSo = new SerializedObject(shooter);
+            SerializedProperty elProp = shooterSo.FindProperty("enemyLayer");
+            if (elProp != null) elProp.intValue = enemiesMask;
+            SerializedProperty elmProp = shooterSo.FindProperty("enemyLayerMask");
+            if (elmProp != null) elmProp.intValue = enemiesMask;
+            shooterSo.ApplyModifiedProperties();
 
             // LineRenderer configured for 2D (width 0.08f, Material "Sprites/Default", Amber Yellow #FFE600, sortingOrder = 10)
             LineRenderer lineRenderer = playerObj.GetComponent<LineRenderer>();
@@ -544,112 +1067,45 @@ namespace GameJam.Editor
             neuralTether.hijackDuration = 6f;
             neuralTether.enemyLayer = 1 << enemyLayerIndex;
 
+            MiniMapMarker pMarker = playerObj.GetComponent<MiniMapMarker>();
+            if (pMarker == null)
+            {
+                pMarker = playerObj.AddComponent<MiniMapMarker>();
+            }
+            pMarker.markerType = MiniMapMarker.MarkerType.Player;
+
             Debug.Log("[GameJam] Player configured with Continuous Rigidbody2D, CircleCollider2D, PlayerController, and NeuralTether.");
             return playerObj;
         }
 
-        private static GameObject SetupEnemyChaser(string folderPath, int enemyLayerIndex)
+        private static void SetupEnemyPrefabs(
+            string folderPath,
+            int enemyLayerIndex,
+            out GameObject chaserPrefab,
+            out GameObject sniperPrefab,
+            out GameObject projectilePrefab)
         {
             if (!AssetDatabase.IsValidFolder("Assets/Prefabs"))
             {
                 AssetDatabase.CreateFolder("Assets", "Prefabs");
             }
-
-            string prefabPath = "Assets/Prefabs/EnemyChaser.prefab";
-
-            GameObject enemyObj = GameObject.Find("EnemyChaser");
-            if (enemyObj == null)
+            if (!AssetDatabase.IsValidFolder("Assets/Prefabs/Enemies"))
             {
-                enemyObj = new GameObject("EnemyChaser");
-                Undo.RegisterCreatedObjectUndo(enemyObj, "Create EnemyChaser");
+                AssetDatabase.CreateFolder("Assets/Prefabs", "Enemies");
             }
 
-            enemyObj.transform.position = new Vector3(3f, 0f, 0f);
-            enemyObj.layer = enemyLayerIndex;
-            enemyObj.tag = "Enemy";
-
-            SpriteRenderer sr = enemyObj.GetComponent<SpriteRenderer>();
-            if (sr == null)
-            {
-                sr = enemyObj.AddComponent<SpriteRenderer>();
-            }
-
-            Sprite monsterSprite = LoadSprite($"{folderPath}/Tiles/tile_0108.png")
-                ?? LoadSprite($"{folderPath}/Tiles/tile_0109.png")
-                ?? LoadSprite($"{folderPath}/Tiles/tile_0110.png")
-                ?? FindFirstSprite(folderPath);
-
-            sr.sprite = monsterSprite;
-
-            // Visual Distinction: Set sprite tint to Coral Red (#FB7185)
             ColorUtility.TryParseHtmlString("#FB7185", out Color coralRed);
-            sr.color = coralRed;
 
-            // Rigidbody2D (dynamic with gravityScale = 0, continuous collision detection)
-            Rigidbody2D rb = enemyObj.GetComponent<Rigidbody2D>();
-            if (rb == null)
-            {
-                rb = enemyObj.AddComponent<Rigidbody2D>();
-            }
-            rb.gravityScale = 0f;
-            rb.freezeRotation = true;
-            rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+            int effectiveEnemyLayer = LayerMask.NameToLayer("Enemies");
+            if (effectiveEnemyLayer == -1) effectiveEnemyLayer = enemyLayerIndex;
+            if (effectiveEnemyLayer == -1) effectiveEnemyLayer = LayerMask.NameToLayer("Enemy");
+            if (effectiveEnemyLayer == -1) effectiveEnemyLayer = 8;
 
-            CircleCollider2D col = enemyObj.GetComponent<CircleCollider2D>();
-            if (col == null)
-            {
-                col = enemyObj.AddComponent<CircleCollider2D>();
-            }
-            col.isTrigger = true;
-
-            EnemyChaser enemyChaser = enemyObj.GetComponent<EnemyChaser>();
-            if (enemyChaser == null)
-            {
-                enemyChaser = enemyObj.AddComponent<EnemyChaser>();
-            }
-
-            SerializedObject enemySo = new SerializedObject(enemyChaser);
-            SerializedProperty dmgProp = enemySo.FindProperty("damageToPlayer");
-            if (dmgProp != null)
-            {
-                dmgProp.intValue = 1;
-                enemySo.ApplyModifiedProperties();
-            }
-
-            SetLayerRecursively(enemyObj, enemyLayerIndex);
-
-            GameObject enemyPrefab = PrefabUtility.SaveAsPrefabAssetAndConnect(enemyObj, prefabPath, InteractionMode.AutomatedAction);
-            if (enemyPrefab == null)
-            {
-                enemyPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-            }
-
-            Debug.Log($"[GameJam] EnemyChaser GameObject and Prefab created at {prefabPath} with Coral Red (#FF4554) tint and Continuous Rigidbody2D.");
-            return enemyPrefab;
-        }
-
-        private static void SetLayerRecursively(GameObject obj, int layer)
-        {
-            if (obj == null) return;
-            obj.layer = layer;
-            foreach (Transform child in obj.transform)
-            {
-                SetLayerRecursively(child.gameObject, layer);
-            }
-        }
-
-        private static void SetupSniperNodeAndProjectile(string folderPath, int enemyLayerIndex, out GameObject sniperPrefab, out GameObject projectilePrefab)
-        {
-            string prefabsDir = "Assets/Prefabs";
-            if (!AssetDatabase.IsValidFolder(prefabsDir))
-            {
-                AssetDatabase.CreateFolder("Assets", "Prefabs");
-            }
-
-            // 1. Create EnemyProjectile Prefab
-            string projPrefabPath = $"{prefabsDir}/EnemyProjectile.prefab";
+            // 1. Create EnemyProjectile Prefab: CircleCollider2D (IsTrigger = false, Health = 1)
+            string projDir = "Assets/Prefabs/Enemies";
+            string projPrefabPath = $"{projDir}/EnemyProjectile.prefab";
             GameObject projObj = new GameObject("EnemyProjectile");
-            projObj.layer = enemyLayerIndex;
+            projObj.layer = effectiveEnemyLayer;
 
             SpriteRenderer projSr = projObj.AddComponent<SpriteRenderer>();
             Sprite projSprite = LoadSprite($"{folderPath}/Tiles/tile_0114.png")
@@ -657,8 +1113,7 @@ namespace GameJam.Editor
                 ?? LoadSprite($"{folderPath}/Tiles/tile_0088.png")
                 ?? FindFirstSprite(folderPath);
             projSr.sprite = projSprite;
-            ColorUtility.TryParseHtmlString("#FB7185", out Color projCoral);
-            projSr.color = projCoral;
+            projSr.color = coralRed;
             projObj.transform.localScale = new Vector3(0.6f, 0.6f, 1f);
 
             Rigidbody2D projRb = projObj.AddComponent<Rigidbody2D>();
@@ -667,18 +1122,23 @@ namespace GameJam.Editor
             projRb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
 
             CircleCollider2D projCol = projObj.AddComponent<CircleCollider2D>();
-            projCol.isTrigger = true;
+            projCol.isTrigger = false;
             projCol.radius = 0.25f;
 
-            projObj.AddComponent<EnemyProjectile>();
+            EnemyProjectile projComponent = projObj.AddComponent<EnemyProjectile>();
+            projComponent.Health = 1;
+
+            MiniMapMarker projMarker = projObj.AddComponent<MiniMapMarker>();
+            projMarker.markerType = MiniMapMarker.MarkerType.Grenade;
 
             projectilePrefab = PrefabUtility.SaveAsPrefabAsset(projObj, projPrefabPath);
+            PrefabUtility.SaveAsPrefabAsset(projObj, "Assets/Prefabs/EnemyProjectile.prefab");
             Object.DestroyImmediate(projObj);
 
-            // 2. Create SniperNode Prefab
-            string sniperPrefabPath = $"{prefabsDir}/SniperNode.prefab";
-            GameObject sniperObj = new GameObject("SniperNode");
-            sniperObj.layer = enemyLayerIndex;
+            // 2. Create SniperEnemy Prefab: CircleCollider2D (IsTrigger = false), Rigidbody2D, SniperNode, MiniMapMarker
+            string sniperPrefabPath = $"{projDir}/SniperEnemy.prefab";
+            GameObject sniperObj = new GameObject("SniperEnemy");
+            sniperObj.layer = effectiveEnemyLayer;
             sniperObj.tag = "Enemy";
 
             SpriteRenderer sniperSr = sniperObj.AddComponent<SpriteRenderer>();
@@ -687,8 +1147,7 @@ namespace GameJam.Editor
                 ?? LoadSprite($"{folderPath}/Tiles/tile_0110.png")
                 ?? FindFirstSprite(folderPath);
             sniperSr.sprite = sniperSprite;
-            ColorUtility.TryParseHtmlString("#FB7185", out Color sniperCoral);
-            sniperSr.color = sniperCoral;
+            sniperSr.color = coralRed;
 
             Rigidbody2D sniperRb = sniperObj.AddComponent<Rigidbody2D>();
             sniperRb.gravityScale = 0f;
@@ -702,17 +1161,63 @@ namespace GameJam.Editor
             SniperNode sniperScript = sniperObj.AddComponent<SniperNode>();
             sniperScript.projectilePrefab = projectilePrefab;
 
+            MiniMapMarker sniperMarker = sniperObj.AddComponent<MiniMapMarker>();
+            sniperMarker.markerType = MiniMapMarker.MarkerType.Sniper;
+
             SerializedObject sniperSo = new SerializedObject(sniperScript);
             SetSerializedProp(sniperSo, "projectilePrefab", projectilePrefab);
             sniperSo.ApplyModifiedProperties();
 
             sniperPrefab = PrefabUtility.SaveAsPrefabAsset(sniperObj, sniperPrefabPath);
+            PrefabUtility.SaveAsPrefabAsset(sniperObj, "Assets/Prefabs/SniperNode.prefab");
             Object.DestroyImmediate(sniperObj);
 
-            Debug.Log($"[GameJam] SniperNode & EnemyProjectile prefabs created at {sniperPrefabPath} and {projPrefabPath}.");
+            // 3. Create ChaserEnemy Prefab: CircleCollider2D, Rigidbody2D (Continuous, low drag), ChaserNode, MiniMapMarker
+            string chaserPrefabPath = $"{projDir}/ChaserEnemy.prefab";
+            GameObject chaserObj = new GameObject("ChaserEnemy");
+            chaserObj.layer = effectiveEnemyLayer;
+            chaserObj.tag = "Enemy";
+
+            SpriteRenderer chaserSr = chaserObj.AddComponent<SpriteRenderer>();
+            Sprite chaserSprite = LoadSprite($"{folderPath}/Tiles/tile_0108.png")
+                ?? LoadSprite($"{folderPath}/Tiles/tile_0109.png")
+                ?? LoadSprite($"{folderPath}/Tiles/tile_0110.png")
+                ?? FindFirstSprite(folderPath);
+            chaserSr.sprite = chaserSprite;
+            chaserSr.color = coralRed;
+
+            Rigidbody2D chaserRb = chaserObj.AddComponent<Rigidbody2D>();
+            chaserRb.gravityScale = 0f;
+            chaserRb.freezeRotation = true;
+            chaserRb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+            chaserRb.linearDamping = 0.1f;
+
+            CircleCollider2D chaserCol = chaserObj.AddComponent<CircleCollider2D>();
+            chaserCol.isTrigger = true;
+            chaserCol.radius = 0.45f;
+
+            ChaserNode chaserNode = chaserObj.AddComponent<ChaserNode>();
+            EnemyChaser enemyChaser = chaserObj.AddComponent<EnemyChaser>();
+
+            SerializedObject chaserSo = new SerializedObject(enemyChaser);
+            SerializedProperty dmgProp = chaserSo.FindProperty("damageToPlayer");
+            if (dmgProp != null)
+            {
+                dmgProp.intValue = 1;
+                chaserSo.ApplyModifiedProperties();
+            }
+
+            MiniMapMarker chaserMarker = chaserObj.AddComponent<MiniMapMarker>();
+            chaserMarker.markerType = MiniMapMarker.MarkerType.Chaser;
+
+            chaserPrefab = PrefabUtility.SaveAsPrefabAsset(chaserObj, chaserPrefabPath);
+            PrefabUtility.SaveAsPrefabAsset(chaserObj, "Assets/Prefabs/EnemyChaser.prefab");
+            Object.DestroyImmediate(chaserObj);
+
+            Debug.Log($"[GameJam] Standard enemy prefabs saved to {projDir}/ (ChaserEnemy, SniperEnemy, EnemyProjectile).");
         }
 
-        private static void SetupWaveSpawner(GameObject playerObj, GameObject enemyPrefab, GameObject sniperPrefab)
+        private static void SetupWaveSpawner(GameObject playerObj, GameObject chaserPrefab, GameObject sniperPrefab)
         {
             GameObject spawnerObj = GameObject.Find("WaveSpawner");
             if (spawnerObj == null)
@@ -727,22 +1232,27 @@ namespace GameJam.Editor
                 waveSpawner = spawnerObj.AddComponent<WaveSpawner>();
             }
 
+            waveSpawner.chaserPrefab = chaserPrefab;
+            waveSpawner.sniperPrefab = sniperPrefab;
+            waveSpawner.ChaserPrefab = chaserPrefab;
+            waveSpawner.SniperPrefab = sniperPrefab;
+            waveSpawner.EnemyPrefab = chaserPrefab;
+            waveSpawner.HalfWidth = 18f;
+            waveSpawner.HalfHeight = 10f;
+            if (playerObj != null) waveSpawner.Player = playerObj.transform;
+
             SerializedObject spawnerSo = new SerializedObject(waveSpawner);
-            SetSerializedProp(spawnerSo, "enemyPrefab", enemyPrefab);
+            SetSerializedProp(spawnerSo, "chaserPrefab", chaserPrefab);
             SetSerializedProp(spawnerSo, "sniperPrefab", sniperPrefab);
+            SetSerializedProp(spawnerSo, "enemyPrefab", chaserPrefab);
             if (playerObj != null)
             {
                 SetSerializedProp(spawnerSo, "player", playerObj.transform);
             }
             spawnerSo.ApplyModifiedProperties();
+            EditorUtility.SetDirty(waveSpawner);
 
-            waveSpawner.EnemyPrefab = enemyPrefab;
-            waveSpawner.SniperPrefab = sniperPrefab;
-            waveSpawner.HalfWidth = 18f;
-            waveSpawner.HalfHeight = 10f;
-            if (playerObj != null) waveSpawner.Player = playerObj.transform;
-
-            Debug.Log("[GameJam] WaveSpawner GameObject setup and linked with EnemyPrefab, SniperPrefab, Player, and 36x20 arena boundary.");
+            Debug.Log("[GameJam] WaveSpawner configured with chaserPrefab, sniperPrefab, Player, and 36x20 arena boundary.");
         }
 
         private static void SetupArenaBoundaries(float width = 36f, float height = 20f)
@@ -813,8 +1323,15 @@ namespace GameJam.Editor
 
             // 2. Add Physical Collision Walls (Prevent Player & Enemy Escape)
             int obstacleLayer = LayerMask.NameToLayer("Obstacles");
-            int wallLayer = obstacleLayer != -1 ? obstacleLayer : LayerMask.NameToLayer("Default");
+            int boundaryLayer = LayerMask.NameToLayer("Boundary");
+            int wallLayer = obstacleLayer != -1 ? obstacleLayer : (boundaryLayer != -1 ? boundaryLayer : LayerMask.NameToLayer("Default"));
             if (wallLayer == -1) wallLayer = 0;
+
+            if (boundaryLayer != -1)
+            {
+                perimeterObj.layer = boundaryLayer;
+                arenaObj.layer = boundaryLayer;
+            }
 
             CreateWall(arenaObj.transform, "Wall_Top", new Vector2(0f, halfHeight + 0.5f), new Vector2(width + 2f, 1f), wallLayer);
             CreateWall(arenaObj.transform, "Wall_Bottom", new Vector2(0f, -halfHeight - 0.5f), new Vector2(width + 2f, 1f), wallLayer);
@@ -841,6 +1358,7 @@ namespace GameJam.Editor
             var allowedNames = new System.Collections.Generic.HashSet<string>
             {
                 "Main Camera",
+                "MiniMapCamera",
                 "_GameManager",
                 "Player",
                 "WaveSpawner",
@@ -926,7 +1444,7 @@ namespace GameJam.Editor
         private static readonly Color ColorButtonActiveSelected = new Color(6f / 255f, 182f / 255f, 212f / 255f, 1f); // #06B6D4 Electric Cyan
         private static readonly Color ColorStartBtnEmerald = new Color(16f / 255f, 185f / 255f, 129f / 255f, 1f); // #10B981 Vivid Emerald Green
         private static readonly Color ColorStartBtnHover = new Color(52f / 255f, 211f / 255f, 153f / 255f, 1f); // #34D399 Bright Emerald Hover
-        private static readonly Color ColorHealthBarBg = new Color(51f / 255f, 65f / 255f, 85f / 255f, 1f); // #334155 Dark Slate
+        private static readonly Color ColorHealthBarBg = new Color(30f / 255f, 41f / 255f, 59f / 255f, 1f); // #1E293B Solid Dark Slate
         private static readonly Color ColorHealthBarFill = new Color(34f / 255f, 197f / 255f, 94f / 255f, 1f); // #22C55E Vivid Lime Green
         private static readonly Color ColorTimerGold = new Color(251f / 255f, 191f / 255f, 36f / 255f, 1f); // #FBBF24 Bright Gold
         private static readonly Color ColorElectricCyan = new Color(6f / 255f, 182f / 255f, 212f / 255f, 1f); // #06B6D4 Electric Cyan
@@ -986,6 +1504,12 @@ namespace GameJam.Editor
             if (tmp == null) return;
             if (fontAsset != null) tmp.font = fontAsset;
 
+            ContentSizeFitter csf = tmp.GetComponent<ContentSizeFitter>();
+            if (csf != null)
+            {
+                Object.DestroyImmediate(csf);
+            }
+
             tmp.enableWordWrapping = false;
             tmp.overflowMode = TextOverflowModes.Overflow;
             tmp.enableAutoSizing = false;
@@ -995,6 +1519,22 @@ namespace GameJam.Editor
             tmp.fontStyle = FontStyles.Bold;
             tmp.raycastTarget = false;
             tmp.rectTransform.localScale = Vector3.one;
+
+            if (tmp.transform.parent != null && tmp.transform.parent is RectTransform parentRect)
+            {
+                if (parentRect.GetComponent<Button>() != null)
+                {
+                    Vector2 parentSize = parentRect.rect.size;
+                    if (parentSize.x > 0f && parentSize.y > 0f)
+                    {
+                        Vector2 curDelta = tmp.rectTransform.sizeDelta;
+                        tmp.rectTransform.sizeDelta = new Vector2(
+                            Mathf.Max(curDelta.x, parentSize.x),
+                            Mathf.Max(curDelta.y, parentSize.y)
+                        );
+                    }
+                }
+            }
         }
 
         private static void SetupGameUIAndManager(GameObject playerObj)
@@ -1083,14 +1623,67 @@ namespace GameJam.Editor
             hudRect.localScale = Vector3.one;
             hudPanelObj.SetActive(true);
 
-            // --- Health Bar (Top-Left): min width = 280, min height = 36 ---
+            // --- Mini-Map Root (Top-Left): Pos: 20, -20; Size: 180, 180 ---
+            GameObject miniMapRootObj = new GameObject("MiniMap_Root", typeof(RectTransform));
+            miniMapRootObj.transform.SetParent(hudPanelObj.transform, false);
+            RectTransform mmRootRect = miniMapRootObj.GetComponent<RectTransform>();
+            mmRootRect.anchorMin = new Vector2(0f, 1f);
+            mmRootRect.anchorMax = new Vector2(0f, 1f);
+            mmRootRect.pivot = new Vector2(0f, 1f);
+            mmRootRect.anchoredPosition = new Vector2(20f, -20f);
+            mmRootRect.sizeDelta = new Vector2(180f, 180f);
+            mmRootRect.localScale = Vector3.one;
+
+            // Circular UI Mask
+            Image mmMaskImg = miniMapRootObj.AddComponent<Image>();
+            mmMaskImg.sprite = GetOrCreateRadarMaskSprite();
+            mmMaskImg.type = Image.Type.Simple;
+            mmMaskImg.color = Color.white;
+
+            Mask mmMask = miniMapRootObj.AddComponent<Mask>();
+            mmMask.showMaskGraphic = false;
+
+            // Child "Radar_Display" RawImage (Stretch fill): texture = MiniMapRenderTexture
+            GameObject mmDisplayObj = new GameObject("Radar_Display", typeof(RectTransform));
+            mmDisplayObj.transform.SetParent(miniMapRootObj.transform, false);
+            RectTransform mmDisplayRect = mmDisplayObj.GetComponent<RectTransform>();
+            mmDisplayRect.anchorMin = Vector2.zero;
+            mmDisplayRect.anchorMax = Vector2.one;
+            mmDisplayRect.offsetMin = Vector2.zero;
+            mmDisplayRect.offsetMax = Vector2.zero;
+            mmDisplayRect.localScale = Vector3.one;
+
+            RawImage mmDisplayImg = mmDisplayObj.AddComponent<RawImage>();
+            RenderTexture miniMapRT = GetOrCreateMiniMapRenderTexture();
+            mmDisplayImg.texture = miniMapRT;
+            mmDisplayImg.color = Color.white;
+            mmDisplayImg.maskable = true;
+
+            // Overlay "Radar_Crosshairs": crisp circular vector ring texture/border (Vivid Cyan #06B6D4) with dynamic 90-degree crosshairs (+ axis) and faint concentric distance rings
+            GameObject mmCrosshairsObj = new GameObject("Radar_Crosshairs", typeof(RectTransform));
+            mmCrosshairsObj.transform.SetParent(miniMapRootObj.transform, false);
+            RectTransform mmCrosshairsRect = mmCrosshairsObj.GetComponent<RectTransform>();
+            mmCrosshairsRect.anchorMin = Vector2.zero;
+            mmCrosshairsRect.anchorMax = Vector2.one;
+            mmCrosshairsRect.offsetMin = Vector2.zero;
+            mmCrosshairsRect.offsetMax = Vector2.zero;
+            mmCrosshairsRect.localScale = Vector3.one;
+
+            Image mmCrosshairsImg = mmCrosshairsObj.AddComponent<Image>();
+            mmCrosshairsImg.sprite = GetOrCreateRadarCrosshairsSprite();
+            mmCrosshairsImg.type = Image.Type.Simple;
+            mmCrosshairsImg.color = Color.white;
+            mmCrosshairsImg.maskable = false; // Bypasses stencil mask so crisp vector borders remain razor-sharp
+            mmCrosshairsImg.raycastTarget = false;
+
+            // --- Health Bar (Top-Left): sit right below the Mini-Map (Pos: 20, -210) ---
             GameObject hbRootObj = new GameObject("HealthBar_Root", typeof(RectTransform));
             hbRootObj.transform.SetParent(hudPanelObj.transform, false);
             RectTransform hbRootRect = hbRootObj.GetComponent<RectTransform>();
             hbRootRect.anchorMin = new Vector2(0f, 1f);
             hbRootRect.anchorMax = new Vector2(0f, 1f);
             hbRootRect.pivot = new Vector2(0f, 1f);
-            hbRootRect.anchoredPosition = new Vector2(40f, -40f);
+            hbRootRect.anchoredPosition = new Vector2(20f, -210f);
             hbRootRect.sizeDelta = new Vector2(280f, 36f);
             hbRootRect.localScale = Vector3.one;
 
@@ -1130,7 +1723,7 @@ namespace GameJam.Editor
 
             TextMeshProUGUI hpTmp = hpTextObj.AddComponent<TextMeshProUGUI>();
             hpTmp.text = "HP: 5 / 5";
-            ConfigureTMPText(hpTmp, fontAsset, fontSize: 20f, alignment: TextAlignmentOptions.Center, color: Color.white);
+            ConfigureTMPText(hpTmp, fontAsset, fontSize: 18f, alignment: TextAlignmentOptions.Center, color: Color.white);
 
             HealthBarUI healthUI = hbRootObj.AddComponent<HealthBarUI>();
             healthUI.backgroundImage = hbBg;
@@ -1142,7 +1735,7 @@ namespace GameJam.Editor
                 healthUI.player = playerObj.GetComponent<PlayerController>();
             }
 
-            // --- Timer (Top-Center): min width = 450, min height = 60 ---
+            // --- Timer (Top-Center): Pos: (0, -40), Size: (400, 60), Pivot: (0.5, 1), Anchors: (0.5, 1, 0.5, 1) ---
             GameObject timerObj = new GameObject("Timer_Text", typeof(RectTransform));
             timerObj.transform.SetParent(hudPanelObj.transform, false);
             RectTransform timerRect = timerObj.GetComponent<RectTransform>();
@@ -1150,14 +1743,14 @@ namespace GameJam.Editor
             timerRect.anchorMax = new Vector2(0.5f, 1f);
             timerRect.pivot = new Vector2(0.5f, 1f);
             timerRect.anchoredPosition = new Vector2(0f, -40f);
-            timerRect.sizeDelta = new Vector2(450f, 60f);
+            timerRect.sizeDelta = new Vector2(400f, 60f);
             timerRect.localScale = Vector3.one;
 
             TextMeshProUGUI timerTmp = timerObj.AddComponent<TextMeshProUGUI>();
             timerTmp.text = "SURVIVE: 50s";
             ConfigureTMPText(timerTmp, fontAsset, fontSize: 32f, alignment: TextAlignmentOptions.Center, color: ColorTimerGold);
 
-            // --- Score & Multiplier (Top-Right): generous margins ---
+            // --- Score & Multiplier (Top-Right): Pos: (-40, -40), Size: (320, 50), Pivot: (1, 1), Anchors: (1, 1, 1, 1) ---
             GameObject scoreObj = new GameObject("Score_Text", typeof(RectTransform));
             scoreObj.transform.SetParent(hudPanelObj.transform, false);
             RectTransform scoreRect = scoreObj.GetComponent<RectTransform>();
@@ -1165,7 +1758,7 @@ namespace GameJam.Editor
             scoreRect.anchorMax = new Vector2(1f, 1f);
             scoreRect.pivot = new Vector2(1f, 1f);
             scoreRect.anchoredPosition = new Vector2(-40f, -40f);
-            scoreRect.sizeDelta = new Vector2(350f, 50f);
+            scoreRect.sizeDelta = new Vector2(320f, 50f);
             scoreRect.localScale = Vector3.one;
 
             TextMeshProUGUI scoreTmp = scoreObj.AddComponent<TextMeshProUGUI>();
@@ -1179,27 +1772,27 @@ namespace GameJam.Editor
             multRect.anchorMax = new Vector2(1f, 1f);
             multRect.pivot = new Vector2(1f, 1f);
             multRect.anchoredPosition = new Vector2(0f, -36f);
-            multRect.sizeDelta = new Vector2(350f, 32f);
+            multRect.sizeDelta = new Vector2(320f, 32f);
             multRect.localScale = Vector3.one;
 
             TextMeshProUGUI multTmp = multObj.AddComponent<TextMeshProUGUI>();
             multTmp.text = "";
-            ConfigureTMPText(multTmp, fontAsset, fontSize: 22f, alignment: TextAlignmentOptions.Right, color: ColorTimerGold);
+            ConfigureTMPText(multTmp, fontAsset, fontSize: 20f, alignment: TextAlignmentOptions.Right, color: ColorTimerGold);
 
-            // --- Neural Hijack Indicator (Below Health Bar): Electric Cyan #06B6D4 ---
+            // --- Neural Hijack Indicator (Below Health Bar): Pos: (20, -255), Size: (350, 30), Pivot: (0, 1), Anchors: (0, 1, 0, 1) ---
             GameObject hijackObj = new GameObject("Hijack_Text", typeof(RectTransform));
             hijackObj.transform.SetParent(hudPanelObj.transform, false);
             RectTransform hijackRect = hijackObj.GetComponent<RectTransform>();
             hijackRect.anchorMin = new Vector2(0f, 1f);
             hijackRect.anchorMax = new Vector2(0f, 1f);
             hijackRect.pivot = new Vector2(0f, 1f);
-            hijackRect.anchoredPosition = new Vector2(40f, -88f);
-            hijackRect.sizeDelta = new Vector2(400f, 34f);
+            hijackRect.anchoredPosition = new Vector2(20f, -255f);
+            hijackRect.sizeDelta = new Vector2(350f, 30f);
             hijackRect.localScale = Vector3.one;
 
             TextMeshProUGUI hijackTmp = hijackObj.AddComponent<TextMeshProUGUI>();
             hijackTmp.text = "HIJACK: [READY] (R-CLICK)";
-            ConfigureTMPText(hijackTmp, fontAsset, fontSize: 22f, alignment: TextAlignmentOptions.Left, color: ColorElectricCyan);
+            ConfigureTMPText(hijackTmp, fontAsset, fontSize: 20f, alignment: TextAlignmentOptions.Left, color: ColorElectricCyan);
 
             if (playerObj != null)
             {
@@ -1263,7 +1856,7 @@ namespace GameJam.Editor
             diffGroupRect.anchorMax = new Vector2(0.5f, 0.5f);
             diffGroupRect.pivot = new Vector2(0.5f, 0.5f);
             diffGroupRect.anchoredPosition = new Vector2(0f, 15f);
-            diffGroupRect.sizeDelta = new Vector2(800f, 65f);
+            diffGroupRect.sizeDelta = new Vector2(850f, 65f);
             diffGroupRect.localScale = Vector3.one;
 
             HorizontalLayoutGroup hlg = diffGroupObj.AddComponent<HorizontalLayoutGroup>();
@@ -1274,14 +1867,13 @@ namespace GameJam.Editor
             hlg.childForceExpandWidth = false;
             hlg.childForceExpandHeight = false;
 
-            ContentSizeFitter diffCsf = diffGroupObj.AddComponent<ContentSizeFitter>();
-            diffCsf.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-            diffCsf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            ContentSizeFitter existingDiffCsf = diffGroupObj.GetComponent<ContentSizeFitter>();
+            if (existingDiffCsf != null) Object.DestroyImmediate(existingDiffCsf);
 
             // Buttons: Clean Charcoal #1E293B with bold crisp white text and bright hover highlights
-            Button easyBtn = CreateFlatButton(diffGroupObj.transform, "Btn_Easy", Vector2.zero, new Vector2(240f, 60f), "EASY (20s)", ColorButtonCharcoal, Color.white, 22f, ColorButtonHoverHighlight, fontAsset);
-            Button normalBtn = CreateFlatButton(diffGroupObj.transform, "Btn_Normal", Vector2.zero, new Vector2(240f, 60f), "NORMAL (50s)", ColorButtonCharcoal, Color.white, 22f, ColorButtonHoverHighlight, fontAsset);
-            Button expertBtn = CreateFlatButton(diffGroupObj.transform, "Btn_Expert", Vector2.zero, new Vector2(240f, 60f), "EXPERT (90s)", ColorButtonCharcoal, Color.white, 22f, ColorButtonHoverHighlight, fontAsset);
+            Button easyBtn = CreateFlatButton(diffGroupObj.transform, "Btn_Easy", Vector2.zero, new Vector2(260f, 60f), "EASY (20s)", ColorButtonCharcoal, Color.white, 22f, ColorButtonHoverHighlight, fontAsset);
+            Button normalBtn = CreateFlatButton(diffGroupObj.transform, "Btn_Normal", Vector2.zero, new Vector2(260f, 60f), "NORMAL (50s)", ColorButtonCharcoal, Color.white, 22f, ColorButtonHoverHighlight, fontAsset);
+            Button expertBtn = CreateFlatButton(diffGroupObj.transform, "Btn_Expert", Vector2.zero, new Vector2(260f, 60f), "EXPERT (90s)", ColorButtonCharcoal, Color.white, 22f, ColorButtonHoverHighlight, fontAsset);
 
             if (gm != null)
             {
@@ -1297,8 +1889,8 @@ namespace GameJam.Editor
                 gm.expertBtnImage = expertBtn.GetComponent<Image>();
             }
 
-            // Start Button: Vivid Emerald Green #10B981 with min width = 450, min height = 75
-            Button startBtn = CreateFlatButton(startPanelObj.transform, "Btn_Start", new Vector2(0f, -85f), new Vector2(450f, 75f), "INITIALIZE SYSTEM (SPACE)", ColorStartBtnEmerald, Color.white, 26f, ColorStartBtnHover, fontAsset);
+            // Start Action Button: Width = 520, Height = 70 (Vivid Emerald Green #10B981)
+            Button startBtn = CreateFlatButton(startPanelObj.transform, "Btn_Start", new Vector2(0f, -85f), new Vector2(520f, 70f), "INITIALIZE SYSTEM (SPACE)", ColorStartBtnEmerald, Color.white, 26f, ColorStartBtnHover, fontAsset);
             if (gm != null)
             {
                 UnityEventTools.AddPersistentListener(startBtn.onClick, gm.StartGame);
@@ -1367,8 +1959,8 @@ namespace GameJam.Editor
             goStatsTmp.text = "";
             ConfigureTMPText(goStatsTmp, fontAsset, fontSize: 20f, alignment: TextAlignmentOptions.Center, color: ColorSlateMuted);
 
-            // Restart Button (Pos: 0, -85; Size: 260, 60): Text = "REBOOT (R)"
-            Button restartBtn = CreateFlatButton(gameOverPanelObj.transform, "Btn_Restart", new Vector2(0f, -85f), new Vector2(260f, 60f), "REBOOT (R)", ColorButtonCharcoal, Color.white, 22f, ColorButtonHoverHighlight, fontAsset);
+            // Restart Button (Standard Button: Width = 520, Height = 60): Text = "REBOOT (R)"
+            Button restartBtn = CreateFlatButton(gameOverPanelObj.transform, "Btn_Restart", new Vector2(0f, -85f), new Vector2(520f, 60f), "REBOOT (R)", ColorButtonCharcoal, Color.white, 22f, ColorButtonHoverHighlight, fontAsset);
             if (gm != null)
             {
                 UnityEventTools.AddPersistentListener(restartBtn.onClick, gm.RestartGame);
@@ -1393,41 +1985,39 @@ namespace GameJam.Editor
             vicBg.type = Image.Type.Simple;
             vicBg.color = ColorVictoryPanelBg;
 
-            // Title Text: TextMeshProUGUI (Pos: 0, 120; Size: 800, 80), text = "NEURAL PURGE COMPLETE", color = Color.green, fontSize = 48, fontStyle = Bold, alignment = Center.
+            // Title Text: TextMeshProUGUI (Pos: 0, 130; Size: 900, 80), text = "NEURAL PURGE COMPLETE", color = Color.green, fontSize = 48, fontStyle = Bold, alignment = Center.
             GameObject vicTitleObj = new GameObject("Title_Text", typeof(RectTransform));
             vicTitleObj.transform.SetParent(victoryPanelObj.transform, false);
             RectTransform vicTitleRect = vicTitleObj.GetComponent<RectTransform>();
             vicTitleRect.anchorMin = new Vector2(0.5f, 0.5f);
             vicTitleRect.anchorMax = new Vector2(0.5f, 0.5f);
             vicTitleRect.pivot = new Vector2(0.5f, 0.5f);
-            vicTitleRect.anchoredPosition = new Vector2(0f, 120f);
-            vicTitleRect.sizeDelta = new Vector2(800f, 80f);
+            vicTitleRect.anchoredPosition = new Vector2(0f, 130f);
+            vicTitleRect.sizeDelta = new Vector2(900f, 80f);
             vicTitleRect.localScale = Vector3.one;
 
             TextMeshProUGUI vicTitleTmp = vicTitleObj.AddComponent<TextMeshProUGUI>();
             vicTitleTmp.text = "NEURAL PURGE COMPLETE";
             ConfigureTMPText(vicTitleTmp, fontAsset, fontSize: 48f, alignment: TextAlignmentOptions.Center, color: Color.green);
 
-            // Sub-text / Stats: TextMeshProUGUI (Pos: 0, 40; Size: 500, 40), text = "SECTOR SECURED", color = Color.white, fontSize = 22, alignment = Center.
+            // Sub-text / Stats: TextMeshProUGUI (Pos: 0, 65; Size: 700, 40), text = "SECTOR SECURED", color = Color.white, fontSize = 22, alignment = Center.
             GameObject vicSubObj = new GameObject("Subtitle_Text", typeof(RectTransform));
             vicSubObj.transform.SetParent(victoryPanelObj.transform, false);
             RectTransform vicSubRect = vicSubObj.GetComponent<RectTransform>();
             vicSubRect.anchorMin = new Vector2(0.5f, 0.5f);
             vicSubRect.anchorMax = new Vector2(0.5f, 0.5f);
             vicSubRect.pivot = new Vector2(0.5f, 0.5f);
-            vicSubRect.anchoredPosition = new Vector2(0f, 40f);
-            vicSubRect.sizeDelta = new Vector2(500f, 40f);
+            vicSubRect.anchoredPosition = new Vector2(0f, 65f);
+            vicSubRect.sizeDelta = new Vector2(700f, 40f);
             vicSubRect.localScale = Vector3.one;
 
             TextMeshProUGUI vicSubTmp = vicSubObj.AddComponent<TextMeshProUGUI>();
             vicSubTmp.text = "SECTOR SECURED";
             ConfigureTMPText(vicSubTmp, fontAsset, fontSize: 22f, alignment: TextAlignmentOptions.Center, color: Color.white);
 
-            // Button 1 - Next Level: "Btn_NextLevel" (Pos: 0, -30; Size: 320, 55).
-            // Background Color: Mint/Emerald (#10B981).
-            // Text: "ADVANCE TO NEXT LEVEL" (Bold White, fontSize = 20).
-            // Wire OnClick -> GameManager.Instance.NextLevel().
-            Button nextLvlBtn = CreateFlatButton(victoryPanelObj.transform, "Btn_NextLevel", new Vector2(0f, -30f), new Vector2(320f, 55f), "ADVANCE TO NEXT LEVEL", ColorStartBtnEmerald, Color.white, 20f, ColorStartBtnHover, fontAsset);
+            // Button 1 - Next Level (Standard Button: Width = 520, Height = 60): "Btn_NextLevel"
+            // Background Color: Mint/Emerald (#10B981), Text: "ADVANCE TO NEXT LEVEL" (Bold White, fontSize = 20)
+            Button nextLvlBtn = CreateFlatButton(victoryPanelObj.transform, "Btn_NextLevel", new Vector2(0f, 5f), new Vector2(520f, 60f), "ADVANCE TO NEXT LEVEL", ColorStartBtnEmerald, Color.white, 20f, ColorStartBtnHover, fontAsset);
             if (gm != null)
             {
                 while (nextLvlBtn.onClick.GetPersistentEventCount() > 0)
@@ -1437,21 +2027,17 @@ namespace GameJam.Editor
                 UnityEventTools.AddPersistentListener(nextLvlBtn.onClick, gm.NextLevel);
             }
 
-            // Button 2 - Replay Sector: "Btn_Replay" (Pos: -120, -105; Size: 200, 50).
-            // Background Color: Slate (#1E293B).
-            // Text: "RETRY (R)" (Bold White, fontSize = 18).
-            // Wire OnClick -> GameManager.Instance.RestartGame().
-            Button replayBtn = CreateFlatButton(victoryPanelObj.transform, "Btn_Replay", new Vector2(-120f, -105f), new Vector2(200f, 50f), "RETRY (R)", ColorButtonCharcoal, Color.white, 18f, ColorButtonHoverHighlight, fontAsset);
+            // Button 2 - Replay Sector (Standard Button: Width = 520, Height = 60): "Btn_Replay"
+            // Background Color: Slate (#1E293B), Text: "RETRY (R)" (Bold White, fontSize = 20)
+            Button replayBtn = CreateFlatButton(victoryPanelObj.transform, "Btn_Replay", new Vector2(0f, -65f), new Vector2(520f, 60f), "RETRY (R)", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
             if (gm != null)
             {
                 UnityEventTools.AddPersistentListener(replayBtn.onClick, gm.RestartGame);
             }
 
-            // Button 3 - Main Menu: "Btn_VictoryMenu" (Pos: 120, -105; Size: 200, 50).
-            // Background Color: Slate (#1E293B).
-            // Text: "MAIN MENU" (Bold White, fontSize = 18).
-            // Wire OnClick -> GameManager.Instance.ExitToMenu().
-            Button vicMenuBtn = CreateFlatButton(victoryPanelObj.transform, "Btn_VictoryMenu", new Vector2(120f, -105f), new Vector2(200f, 50f), "MAIN MENU", ColorButtonCharcoal, Color.white, 18f, ColorButtonHoverHighlight, fontAsset);
+            // Button 3 - Main Menu (Standard Button: Width = 520, Height = 60): "Btn_VictoryMenu"
+            // Background Color: Slate (#1E293B), Text: "MAIN MENU" (Bold White, fontSize = 20)
+            Button vicMenuBtn = CreateFlatButton(victoryPanelObj.transform, "Btn_VictoryMenu", new Vector2(0f, -135f), new Vector2(520f, 60f), "MAIN MENU", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
             if (gm != null)
             {
                 UnityEventTools.AddPersistentListener(vicMenuBtn.onClick, gm.ExitToMenu);
@@ -1474,7 +2060,7 @@ namespace GameJam.Editor
             pauseBg.type = Image.Type.Simple;
             pauseBg.color = ColorPausePanelBg;
 
-            // Title Text: TextMeshProUGUI (Pos: 0, 130; Size: 600, 70), text = "SYSTEM PAUSED", color = new Color(1f, 0.85f, 0.1f, 1f), fontSize = 46, fontStyle = Bold, alignment = Center.
+            // Title Text: TextMeshProUGUI (Pos: 0, 130; Size: 800, 70), text = "SYSTEM PAUSED", color = new Color(1f, 0.85f, 0.1f, 1f), fontSize = 46, fontStyle = Bold, alignment = Center.
             GameObject pauseTitleObj = new GameObject("Title_Text", typeof(RectTransform));
             pauseTitleObj.transform.SetParent(pausePanelObj.transform, false);
             RectTransform pauseTitleRect = pauseTitleObj.GetComponent<RectTransform>();
@@ -1482,35 +2068,29 @@ namespace GameJam.Editor
             pauseTitleRect.anchorMax = new Vector2(0.5f, 0.5f);
             pauseTitleRect.pivot = new Vector2(0.5f, 0.5f);
             pauseTitleRect.anchoredPosition = new Vector2(0f, 130f);
-            pauseTitleRect.sizeDelta = new Vector2(600f, 70f);
+            pauseTitleRect.sizeDelta = new Vector2(800f, 70f);
             pauseTitleRect.localScale = Vector3.one;
 
             TextMeshProUGUI pauseTitleTmp = pauseTitleObj.AddComponent<TextMeshProUGUI>();
             pauseTitleTmp.text = "SYSTEM PAUSED";
             ConfigureTMPText(pauseTitleTmp, fontAsset, fontSize: 46f, alignment: TextAlignmentOptions.Center, color: ColorPauseTitleGold);
 
-            // Button 1 - Resume: "Btn_Resume" (Pos: 0, 30; Size: 280, 50).
-            // Text: "RESUME (ESC)".
-            // Wire OnClick -> GameManager.Instance.ResumeGame().
-            Button resumeBtn = CreateFlatButton(pausePanelObj.transform, "Btn_Resume", new Vector2(0f, 30f), new Vector2(280f, 50f), "RESUME (ESC)", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
+            // Button 1 - Resume (Standard Button: Width = 520, Height = 60): "Btn_Resume" (Pos: 0, 40)
+            Button resumeBtn = CreateFlatButton(pausePanelObj.transform, "Btn_Resume", new Vector2(0f, 40f), new Vector2(520f, 60f), "RESUME (ESC)", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
             if (gm != null)
             {
                 UnityEventTools.AddPersistentListener(resumeBtn.onClick, gm.ResumeGame);
             }
 
-            // Button 2 - Main Menu: "Btn_PauseMenu" (Pos: 0, -40; Size: 280, 50).
-            // Text: "MAIN MENU".
-            // Wire OnClick -> GameManager.Instance.ExitToMenu().
-            Button pauseMenuBtn = CreateFlatButton(pausePanelObj.transform, "Btn_PauseMenu", new Vector2(0f, -40f), new Vector2(280f, 50f), "MAIN MENU", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
+            // Button 2 - Main Menu (Standard Button: Width = 520, Height = 60): "Btn_PauseMenu" (Pos: 0, -40)
+            Button pauseMenuBtn = CreateFlatButton(pausePanelObj.transform, "Btn_PauseMenu", new Vector2(0f, -40f), new Vector2(520f, 60f), "MAIN MENU", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
             if (gm != null)
             {
                 UnityEventTools.AddPersistentListener(pauseMenuBtn.onClick, gm.ExitToMenu);
             }
 
-            // Button 3 - Exit Game: "Btn_Quit" (Pos: 0, -110; Size: 280, 50).
-            // Text: "EXIT GAME".
-            // Wire OnClick -> GameManager.Instance.QuitGame().
-            Button quitBtn = CreateFlatButton(pausePanelObj.transform, "Btn_Quit", new Vector2(0f, -110f), new Vector2(280f, 50f), "EXIT GAME", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
+            // Button 3 - Exit Game (Standard Button: Width = 520, Height = 60): "Btn_Quit" (Pos: 0, -120)
+            Button quitBtn = CreateFlatButton(pausePanelObj.transform, "Btn_Quit", new Vector2(0f, -120f), new Vector2(520f, 60f), "EXIT GAME", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
             if (gm != null)
             {
                 UnityEventTools.AddPersistentListener(quitBtn.onClick, gm.QuitGame);
@@ -1731,27 +2311,39 @@ namespace GameJam.Editor
             cb.colorMultiplier = 1f;
             btn.colors = cb;
 
-            // Layout element & ContentSizeFitter to guarantee button expands proportionately rather than squeezing
+            // Layout element to guarantee button retains fixed dimensions inside layouts
             LayoutElement le = btnObj.GetComponent<LayoutElement>() ?? btnObj.AddComponent<LayoutElement>();
             le.minWidth = size.x;
             le.minHeight = size.y;
             le.preferredWidth = size.x;
             le.preferredHeight = size.y;
 
-            ContentSizeFitter csf = btnObj.GetComponent<ContentSizeFitter>() ?? btnObj.AddComponent<ContentSizeFitter>();
-            csf.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-            csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            // Zero ContentSizeFitter Enforcement: strictly destroy any ContentSizeFitter on button
+            ContentSizeFitter btnCsf = btnObj.GetComponent<ContentSizeFitter>();
+            if (btnCsf != null)
+            {
+                Object.DestroyImmediate(btnCsf);
+            }
 
             GameObject labelObj = GetOrRecreateChild(btnObj.transform, "Text");
             RectTransform labelRect = labelObj.GetComponent<RectTransform>();
             labelRect.anchorMin = Vector2.zero;
             labelRect.anchorMax = Vector2.one;
-            labelRect.offsetMin = new Vector2(20f, 6f);
-            labelRect.offsetMax = new Vector2(-20f, -6f);
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+            labelRect.sizeDelta = new Vector2(Mathf.Max(size.x, 520f), Mathf.Max(size.y, 60f));
             labelRect.localScale = Vector3.one;
+
+            ContentSizeFitter labelCsf = labelObj.GetComponent<ContentSizeFitter>();
+            if (labelCsf != null)
+            {
+                Object.DestroyImmediate(labelCsf);
+            }
 
             TextMeshProUGUI labelTmp = labelObj.GetComponent<TextMeshProUGUI>() ?? labelObj.AddComponent<TextMeshProUGUI>();
             labelTmp.text = text;
+            labelTmp.enableWordWrapping = false;
+            labelTmp.overflowMode = TextOverflowModes.Overflow;
             ConfigureTMPText(labelTmp, fontAsset, fontSize: fontSize, alignment: TextAlignmentOptions.Center, color: textColor);
 
             return btn;
@@ -1813,6 +2405,33 @@ namespace GameJam.Editor
 
             TMP_FontAsset fontAsset = GetOrCreateDefaultTMPFont();
 
+            // 0. Zero ContentSizeFitter Enforcement Across Canvas Hierarchy:
+            // Absolutely DO NOT allow ContentSizeFitter anywhere under UI_Canvas.
+            // If an existing object contains a ContentSizeFitter, explicitly destroy it.
+            ContentSizeFitter[] allCsfs = canvas.GetComponentsInChildren<ContentSizeFitter>(true);
+            foreach (ContentSizeFitter fitter in allCsfs)
+            {
+                if (fitter != null)
+                {
+                    Object.DestroyImmediate(fitter);
+                }
+            }
+
+            // Enforce Modal Panels: Fullscreen anchors (0, 0 to 1, 1)
+            string[] modalPanelNames = new string[] { "StartPanel", "GameOverPanel", "VictoryPanel", "PausePanel" };
+            foreach (string panelName in modalPanelNames)
+            {
+                Transform pt = canvas.transform.Find(panelName);
+                if (pt != null && pt is RectTransform prt)
+                {
+                    prt.anchorMin = Vector2.zero;
+                    prt.anchorMax = Vector2.one;
+                    prt.offsetMin = Vector2.zero;
+                    prt.offsetMax = Vector2.zero;
+                    prt.localScale = Vector3.one;
+                }
+            }
+
             // 1. Replace any legacy UnityEngine.UI.Text components across Canvas with TMPro.TextMeshProUGUI
             Text[] legacyTexts = canvas.GetComponentsInChildren<Text>(true);
             foreach (Text legacy in legacyTexts)
@@ -1847,6 +2466,23 @@ namespace GameJam.Editor
                 tmp.enableWordWrapping = false;
                 tmp.overflowMode = TextOverflowModes.Overflow;
                 tmp.enableAutoSizing = false;
+
+                // Set rectTransform.sizeDelta equal to or larger than parent container dimensions only if parent is a Button
+                if (tmp.transform.parent != null && tmp.transform.parent is RectTransform pRect)
+                {
+                    if (pRect.GetComponent<Button>() != null)
+                    {
+                        Vector2 pSize = pRect.rect.size;
+                        if (pSize.x > 0f && pSize.y > 0f)
+                        {
+                            Vector2 curDelta = tmp.rectTransform.sizeDelta;
+                            tmp.rectTransform.sizeDelta = new Vector2(
+                                Mathf.Max(curDelta.x, pSize.x),
+                                Mathf.Max(curDelta.y, pSize.y)
+                            );
+                        }
+                    }
+                }
 
                 string goName = tmp.gameObject.name;
                 Transform p = tmp.transform.parent;
@@ -1890,13 +2526,17 @@ namespace GameJam.Editor
                 {
                     tmp.fontSize = 32f;
                 }
+                else if (goName == "HP_Text")
+                {
+                    tmp.fontSize = 18f;
+                }
                 else if (goName.Contains("HP") || goName.Contains("Subtitle") || goName.Contains("Stats"))
                 {
                     tmp.fontSize = (p != null && p.name == "VictoryPanel") ? 22f : 20f;
                 }
                 else if (goName.Contains("Hijack") || goName.Contains("Multiplier"))
                 {
-                    tmp.fontSize = 22f;
+                    tmp.fontSize = 20f;
                 }
                 else
                 {
