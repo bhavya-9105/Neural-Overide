@@ -13,8 +13,8 @@ GameObject:
   - component: {fileID: 4163287917763063123}
   - component: {fileID: 8043841615218412339}
   - component: {fileID: 3932637522619330697}
-  - component: {fileID: 4820866770721534773}
-  m_Layer: 8
+  - component: {fileID: 1643075062141425294}
+  m_Layer: 11
   m_Name: EnemyProjectile
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -121,7 +121,7 @@ Rigidbody2D:
     m_Bits: 0
   m_Interpolate: 0
   m_SleepingMode: 1
-  m_CollisionDetection: 1
+  m_CollisionDetection: 0
   m_Constraints: 4
 --- !u!58 &8043841615218412339
 CircleCollider2D:
@@ -176,7 +176,7 @@ MonoBehaviour:
   damage: 1
   health: 1
   scoreReward: 50
---- !u!114 &4820866770721534773
+--- !u!114 &1643075062141425294
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -189,4 +189,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MiniMapMarker
   markerType: 3
-  localOffset: {x: 0, y: 0, z: 0}
+  customColor: {r: 0.8, g: 0.2, b: 1, a: 1}
+  blipSize: {x: 6, y: 6}

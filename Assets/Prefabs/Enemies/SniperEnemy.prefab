@@ -13,8 +13,8 @@ GameObject:
   - component: {fileID: 8086837871297625378}
   - component: {fileID: 2679030529430661500}
   - component: {fileID: 2917888091380036610}
-  - component: {fileID: 2759141919531319945}
-  m_Layer: 8
+  - component: {fileID: 645229889022204959}
+  m_Layer: 11
   m_Name: SniperEnemy
   m_TagString: Enemy
   m_Icon: {fileID: 0}
@@ -121,7 +121,7 @@ Rigidbody2D:
     m_Bits: 0
   m_Interpolate: 0
   m_SleepingMode: 1
-  m_CollisionDetection: 1
+  m_CollisionDetection: 0
   m_Constraints: 4
 --- !u!58 &2679030529430661500
 CircleCollider2D:
@@ -179,7 +179,7 @@ MonoBehaviour:
   projectilePrefab: {fileID: 8157825229141067318, guid: 7bc89f244b3c7984b859121b6bad6054, type: 3}
   hitFlashDuration: 0.05
   isHijacked: 0
---- !u!114 &2759141919531319945
+--- !u!114 &645229889022204959
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -192,4 +192,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MiniMapMarker
   markerType: 2
-  localOffset: {x: 0, y: 0, z: 0}
+  customColor: {r: 1, g: 0.8, b: 0, a: 1}
+  blipSize: {x: 10, y: 10}

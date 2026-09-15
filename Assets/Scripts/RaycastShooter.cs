@@ -11,14 +11,38 @@ public class RaycastShooter : MonoBehaviour
     public LayerMask enemyLayer;
     public LineRenderer beamRenderer;
 
+    [Header("Aiming & Visual Crosshair")]
+    public LineRenderer aimLaserRenderer;
+    public RectTransform customCrosshairUI;
+
     private float nextFireTime = 0f;
     private Coroutine beamCoroutine;
+    private readonly RaycastHit2D[] hitBuffer = new RaycastHit2D[16];
+    private Camera cachedMainCam;
+
+    private Camera MainCam
+    {
+        get
+        {
+            if (cachedMainCam == null) cachedMainCam = Camera.main;
+            return cachedMainCam;
+        }
+    }
 
     private void Awake()
     {
         if (beamRenderer == null)
         {
             beamRenderer = GetComponent<LineRenderer>();
+        }
+
+        if (aimLaserRenderer == null)
+        {
+            Transform aimObj = transform.Find("AimLaser");
+            if (aimObj != null)
+            {
+                aimLaserRenderer = aimObj.GetComponent<LineRenderer>();
+            }
         }
 
         // Ensure triggers are queried by 2D Raycasts so projectiles are intercepted cleanly
@@ -31,11 +55,38 @@ public class RaycastShooter : MonoBehaviour
             beamRenderer.sortingOrder = 10;
             beamRenderer.enabled = false;
         }
+
+        if (aimLaserRenderer != null)
+        {
+            aimLaserRenderer.enabled = false;
+        }
+
+        if (customCrosshairUI != null)
+        {
+            customCrosshairUI.gameObject.SetActive(false);
+        }
+
+        Cursor.visible = true;
     }
 
     private void Start()
     {
         EnforceEnemyLayerMask();
+        if (aimLaserRenderer != null)
+        {
+            aimLaserRenderer.enabled = false;
+        }
+        if (customCrosshairUI != null)
+        {
+            customCrosshairUI.gameObject.SetActive(false);
+        }
+        Cursor.visible = true;
+    }
+
+    public void SetupAimLaser()
+    {
+        if (aimLaserRenderer == null) return;
+        aimLaserRenderer.enabled = false;
     }
 
     /// <summary>
@@ -44,15 +95,10 @@ public class RaycastShooter : MonoBehaviour
     /// </summary>
     private void EnforceEnemyLayerMask()
     {
-        int mask = LayerMask.GetMask("Enemy");
+        int mask = LayerMask.GetMask("Enemies");
         if (mask == 0)
         {
-            mask = LayerMask.GetMask("Enemy");
-        }
-        if (mask == 0)
-        {
-            int idx = LayerMask.NameToLayer("Enemy");
-            if (idx == -1) idx = LayerMask.NameToLayer("Enemy");
+            int idx = LayerMask.NameToLayer("Enemies");
             if (idx != -1) mask = (1 << idx);
         }
 
@@ -70,30 +116,50 @@ public class RaycastShooter : MonoBehaviour
 
     private void Update()
     {
-        if (GameManager.Instance != null && !GameManager.Instance.isGameActive)
+        // Enforce standard system hardware cursor and keep custom overlays deactivated
+        Cursor.visible = true;
+
+        if (customCrosshairUI != null && customCrosshairUI.gameObject.activeSelf)
         {
-            return;
+            customCrosshairUI.gameObject.SetActive(false);
         }
 
-        if (Time.timeScale == 0f)
+        if (aimLaserRenderer != null && aimLaserRenderer.enabled)
         {
-            return;
+            aimLaserRenderer.enabled = false;
         }
+
+        bool isGameplay = (GameManager.Instance == null || (GameManager.Instance.isGameActive && !GameManager.Instance.isPaused)) && Time.timeScale > 0f;
+        if (!isGameplay) return;
 
         if ((Input.GetMouseButton(0) || Input.GetMouseButtonDown(0)) && Time.time >= nextFireTime)
         {
             nextFireTime = Time.time + fireRate;
             FirePulse();
         }
+
+        if (Input.GetMouseButtonDown(1))
+        {
+            NeuralTether tether = GetComponent<NeuralTether>();
+            if (tether != null)
+            {
+                tether.TryInitiateHijack();
+            }
+            EMPAbility emp = GetComponent<EMPAbility>();
+            if (emp != null && emp.IsReady)
+            {
+                emp.TriggerEMP();
+            }
+        }
     }
 
     private void FirePulse()
     {
-        Camera mainCam = Camera.main;
-        if (mainCam == null) return;
+        Camera cam = MainCam;
+        if (cam == null) return;
 
         Vector2 playerPos = transform.position;
-        Vector2 mousePos = mainCam.ScreenToWorldPoint(Input.mousePosition);
+        Vector2 mousePos = cam.ScreenToWorldPoint(Input.mousePosition);
 
         PlayerController player = GetComponent<PlayerController>();
         if (player != null)
@@ -107,19 +173,43 @@ public class RaycastShooter : MonoBehaviour
             aimDirection = transform.up;
         }
 
+        if (player != null)
+        {
+            player.TriggerRecoil(aimDirection);
+        }
+
         // Offset origin from muzzlePoint or player center so player's own collider never blocks the raycast
         Vector2 rayOrigin = (player != null && player.muzzlePoint != null)
             ? (Vector2)player.muzzlePoint.position
             : playerPos + aimDirection * 0.45f;
-        LayerMask targetMask = enemyLayerMask.value != 0 ? enemyLayerMask : enemyLayer;
-        RaycastHit2D hit = Physics2D.Raycast(rayOrigin, aimDirection, weaponRange, targetMask);
+        int targetMask = LayerMask.GetMask("Enemies");
+        if (targetMask == 0) targetMask = enemyLayerMask.value != 0 ? enemyLayerMask.value : (1 << 11);
+
+        int hitCount = Physics2D.RaycastNonAlloc(rayOrigin, aimDirection, hitBuffer, weaponRange, targetMask);
+        RaycastHit2D closestHit = default;
+        float closestDist = float.MaxValue;
+
+        for (int i = 0; i < hitCount; i++)
+        {
+            RaycastHit2D h = hitBuffer[i];
+            if (h.collider != null && h.collider.gameObject != gameObject)
+            {
+                if (h.distance < closestDist)
+                {
+                    closestDist = h.distance;
+                    closestHit = h;
+                }
+            }
+        }
+
         Vector2 hitPoint = rayOrigin + aimDirection * weaponRange;
 
-        if (hit.collider != null && hit.collider.gameObject != gameObject)
+        if (closestHit.collider != null)
         {
-            hitPoint = hit.point;
+            hitPoint = closestHit.point;
+            Collider2D hitCol = closestHit.collider;
 
-            EnemyChaser chaser = hit.collider.GetComponent<EnemyChaser>() ?? hit.collider.GetComponentInParent<EnemyChaser>();
+            EnemyChaser chaser = hitCol.GetComponent<EnemyChaser>() ?? hitCol.GetComponentInParent<EnemyChaser>();
             if (chaser != null)
             {
                 chaser.TakeDamage(damage);
@@ -130,7 +220,7 @@ public class RaycastShooter : MonoBehaviour
             }
             else
             {
-                SniperNode sniper = hit.collider.GetComponent<SniperNode>() ?? hit.collider.GetComponentInParent<SniperNode>();
+                SniperNode sniper = hitCol.GetComponent<SniperNode>() ?? hitCol.GetComponentInParent<SniperNode>();
                 if (sniper != null)
                 {
                     sniper.TakeDamage(damage);
@@ -141,7 +231,7 @@ public class RaycastShooter : MonoBehaviour
                 }
                 else
                 {
-                    EnemyProjectile proj = hit.collider.GetComponent<EnemyProjectile>() ?? hit.collider.GetComponentInParent<EnemyProjectile>();
+                    EnemyProjectile proj = hitCol.GetComponent<EnemyProjectile>() ?? hitCol.GetComponentInParent<EnemyProjectile>();
                     if (proj != null && !proj.IsAllied)
                     {
                         proj.TakeDamage(damage);
@@ -163,13 +253,7 @@ public class RaycastShooter : MonoBehaviour
             beamCoroutine = StartCoroutine(ShowBeamRoutine(rayOrigin, hitPoint));
         }
 
-        // Radar line-of-fire indicator
-        MiniMapMarker marker = GetComponent<MiniMapMarker>();
-        if (marker != null)
-        {
-            ColorUtility.TryParseHtmlString("#06B6D4", out Color cyanCol);
-            marker.TriggerFiringRay(aimDirection, weaponRange, cyanCol);
-        }
+
 
         // Camera shake and sound
         CameraFollow2D.TriggerShake(0.06f, 0.12f);
@@ -209,5 +293,23 @@ public class RaycastShooter : MonoBehaviour
 
         beamRenderer.enabled = false;
         beamCoroutine = null;
+    }
+
+    private void OnDisable()
+    {
+        Cursor.visible = true;
+        if (customCrosshairUI != null && customCrosshairUI.gameObject.activeSelf)
+        {
+            customCrosshairUI.gameObject.SetActive(false);
+        }
+        if (aimLaserRenderer != null && aimLaserRenderer.enabled)
+        {
+            aimLaserRenderer.enabled = false;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        Cursor.visible = true;
     }
 }

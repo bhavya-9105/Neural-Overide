@@ -87,11 +87,8 @@ public class NeuralTether : MonoBehaviour
         Instance = this;
         playerController = GetComponent<PlayerController>();
 
-        if (enemyLayer.value == 0)
-        {
-            int layer = LayerMask.NameToLayer("Enemy");
-            enemyLayer = (layer != -1) ? (1 << layer) : ~0;
-        }
+        int layer = LayerMask.NameToLayer("Enemies");
+        enemyLayer = (layer != -1) ? (1 << layer) : LayerMask.GetMask("Enemies");
 
         if (statusText == null)
         {
@@ -214,7 +211,7 @@ public class NeuralTether : MonoBehaviour
         }
     }
 
-    private void TryInitiateHijack()
+    public void TryInitiateHijack()
     {
         if (playerController != null && playerController.IsDead) return;
         if (GameManager.Instance != null && GameManager.Instance.CurrentState != State.Playing) return;

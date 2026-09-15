@@ -26,8 +26,10 @@ public class EnemyChaser : MonoBehaviour, IHijackable
     private Vector3 originalScale;
 
     private Rigidbody2D rb;
+    private Transform playerTransform;
     private Transform player;
-    private bool isDead = false;
+    public bool isDead = false;
+    public bool IsDead => isDead;
     private Coroutine hitFlashCoroutine;
 
     public int CurrentHealth => currentHealth;
@@ -42,6 +44,7 @@ public class EnemyChaser : MonoBehaviour, IHijackable
         {
             rb.gravityScale = 0f;
             rb.freezeRotation = true;
+            rb.collisionDetectionMode = CollisionDetectionMode2D.Discrete;
         }
 
         if (spriteRenderer == null)
@@ -57,19 +60,12 @@ public class EnemyChaser : MonoBehaviour, IHijackable
         currentHealth = maxHealth;
         originalScale = transform.localScale;
 
-        int enemiesLayer = LayerMask.NameToLayer("Enemy");
-        if (enemiesLayer == -1) enemiesLayer = LayerMask.NameToLayer("Enemy");
+        int enemiesLayer = LayerMask.NameToLayer("Enemies");
         if (enemiesLayer != -1 && (gameObject.layer == 0 || gameObject.layer == LayerMask.NameToLayer("Default")))
         {
             gameObject.layer = enemiesLayer;
         }
 
-        MiniMapMarker marker = GetComponent<MiniMapMarker>();
-        if (marker == null)
-        {
-            marker = gameObject.AddComponent<MiniMapMarker>();
-        }
-        marker.markerType = MiniMapMarker.MarkerType.Chaser;
 
         ChaserNode chaserNode = GetComponent<ChaserNode>();
         if (chaserNode == null)
@@ -78,11 +74,30 @@ public class EnemyChaser : MonoBehaviour, IHijackable
         }
     }
 
+    private void OnEnable()
+    {
+        WaveSpawner.RegisterEnemy(gameObject);
+        if (PlayerController.Instance != null)
+        {
+            playerTransform = PlayerController.Instance.transform;
+            player = playerTransform;
+        }
+    }
+
+    private void OnDisable()
+    {
+        WaveSpawner.UnregisterEnemy(gameObject);
+    }
+
     public static readonly Color DefaultEnemyColor = new Color(0.984f, 0.443f, 0.522f, 1f); // Coral #FB7185
 
     private void Start()
     {
-        FindPlayer();
+        if (PlayerController.Instance != null)
+        {
+            playerTransform = PlayerController.Instance.transform;
+            player = playerTransform;
+        }
 
         if (GameManager.Instance != null)
         {
@@ -92,15 +107,6 @@ public class EnemyChaser : MonoBehaviour, IHijackable
         if (spriteRenderer != null && !isHijacked)
         {
             spriteRenderer.color = DefaultEnemyColor;
-        }
-    }
-
-    private void FindPlayer()
-    {
-        GameObject playerObj = GameObject.FindWithTag("Player") ?? GameObject.Find("Player");
-        if (playerObj != null)
-        {
-            player = playerObj.transform;
         }
     }
 
@@ -126,7 +132,16 @@ public class EnemyChaser : MonoBehaviour, IHijackable
 
     private void FixedUpdate()
     {
-        if (isDead) return;
+        if (isDead)
+        {
+            if (rb != null)
+            {
+#pragma warning disable 0618
+                rb.velocity = Vector2.zero;
+#pragma warning restore 0618
+            }
+            return;
+        }
 
         // If hijacked: seek and destroy rogue enemy nodes
         if (isHijacked)
@@ -135,19 +150,32 @@ public class EnemyChaser : MonoBehaviour, IHijackable
             return;
         }
 
-        // Standard wild enemy behavior: chase player
-        if (player == null || !player.gameObject.activeInHierarchy)
+        // Standard wild enemy behavior: chase player (using cached player reference)
+        if (playerTransform == null)
         {
-            FindPlayer();
-            if (player == null) return;
+            if (PlayerController.Instance != null)
+            {
+                playerTransform = PlayerController.Instance.transform;
+                player = playerTransform;
+            }
+            if (playerTransform == null)
+            {
+                if (rb != null)
+                {
+#pragma warning disable 0618
+                    rb.velocity = Vector2.zero;
+#pragma warning restore 0618
+                }
+                return;
+            }
         }
 
         if (rb != null)
         {
-            Vector2 currentPosition = rb.position;
-            Vector2 targetPosition = player.position;
-            Vector2 newPosition = Vector2.MoveTowards(currentPosition, targetPosition, moveSpeed * Time.fixedDeltaTime);
-            rb.MovePosition(newPosition);
+            Vector2 dir = ((Vector2)playerTransform.position - rb.position).normalized;
+#pragma warning disable 0618
+            rb.velocity = dir * moveSpeed;
+#pragma warning restore 0618
         }
     }
 
@@ -163,14 +191,16 @@ public class EnemyChaser : MonoBehaviour, IHijackable
 
         if (minionTarget != null)
         {
-            Vector2 currentPosition = rb.position;
-            Vector2 targetPosition = minionTarget.position;
-            // Move aggressively at 1.4x speed towards rogue target
-            Vector2 newPosition = Vector2.MoveTowards(currentPosition, targetPosition, moveSpeed * 1.4f * Time.fixedDeltaTime);
-            rb.MovePosition(newPosition);
+            Vector2 dir = ((Vector2)minionTarget.position - rb.position).normalized;
+#pragma warning disable 0618
+            rb.velocity = dir * (moveSpeed * 1.4f);
+#pragma warning restore 0618
         }
         else
         {
+#pragma warning disable 0618
+            rb.velocity = Vector2.zero;
+#pragma warning restore 0618
             // If no wild enemies remain, search again periodically
             FindClosestWildEnemy();
         }
@@ -182,27 +212,38 @@ public class EnemyChaser : MonoBehaviour, IHijackable
         Transform bestTarget = null;
         Vector2 myPos = transform.position;
 
-        EnemyChaser[] chasers = Object.FindObjectsByType<EnemyChaser>();
-        foreach (EnemyChaser c in chasers)
+        var enemies = WaveSpawner.activeEnemies;
+        for (int i = enemies.Count - 1; i >= 0; i--)
         {
-            if (c == null || c == this || c.isHijacked || c.isDead || c.CurrentHealth <= 0) continue;
-            float d = Vector2.Distance(myPos, c.transform.position);
-            if (d < closestDist)
+            GameObject enemyObj = enemies[i];
+            if (enemyObj == null)
             {
-                closestDist = d;
-                bestTarget = c.transform;
+                enemies.RemoveAt(i);
+                continue;
             }
-        }
+            if (enemyObj == gameObject) continue;
 
-        SniperNode[] snipers = Object.FindObjectsByType<SniperNode>();
-        foreach (SniperNode s in snipers)
-        {
-            if (s == null || s.isHijacked || s.Health <= 0) continue;
-            float d = Vector2.Distance(myPos, s.transform.position);
-            if (d < closestDist)
+            EnemyChaser c = enemyObj.GetComponent<EnemyChaser>();
+            if (c != null && !c.isHijacked && !c.isDead && c.CurrentHealth > 0)
             {
-                closestDist = d;
-                bestTarget = s.transform;
+                float d = Vector2.Distance(myPos, c.transform.position);
+                if (d < closestDist)
+                {
+                    closestDist = d;
+                    bestTarget = c.transform;
+                }
+                continue;
+            }
+
+            SniperNode s = enemyObj.GetComponent<SniperNode>();
+            if (s != null && !s.isHijacked && s.Health > 0)
+            {
+                float d = Vector2.Distance(myPos, s.transform.position);
+                if (d < closestDist)
+                {
+                    closestDist = d;
+                    bestTarget = s.transform;
+                }
             }
         }
 
@@ -305,15 +346,9 @@ public class EnemyChaser : MonoBehaviour, IHijackable
             GameManager.Instance.IncrementEnemiesEliminated();
         }
 
-        if (isHijacked)
+        if (isHijacked && NeuralTether.Instance != null)
         {
-#pragma warning disable 0618
-            var tether = FindObjectOfType<NeuralTether>();
-#pragma warning restore 0618
-            if (tether != null)
-            {
-                tether.ReleaseMinion();
-            }
+            NeuralTether.Instance.ReleaseMinion();
         }
 
         Destroy(gameObject);
@@ -435,6 +470,7 @@ public class EnemyChaser : MonoBehaviour, IHijackable
     {
         if (isDead) return;
         isDead = true;
+        WaveSpawner.UnregisterEnemy(gameObject);
 
         Collider2D col = GetComponent<Collider2D>();
         if (col != null) col.enabled = false;
@@ -452,15 +488,9 @@ public class EnemyChaser : MonoBehaviour, IHijackable
             GameManager.Instance.IncrementEnemiesEliminated();
         }
 
-        if (isHijacked)
+        if (isHijacked && NeuralTether.Instance != null)
         {
-#pragma warning disable 0618
-            var tether = FindObjectOfType<NeuralTether>();
-#pragma warning restore 0618
-            if (tether != null)
-            {
-                tether.ReleaseMinion();
-            }
+            NeuralTether.Instance.ReleaseMinion();
         }
 
         if (animator != null)
@@ -476,15 +506,10 @@ public class EnemyChaser : MonoBehaviour, IHijackable
 
     private void OnDestroy()
     {
-        if (isHijacked)
+        WaveSpawner.UnregisterEnemy(gameObject);
+        if (isHijacked && NeuralTether.Instance != null)
         {
-#pragma warning disable 0618
-            var tether = FindObjectOfType<NeuralTether>();
-#pragma warning restore 0618
-            if (tether != null)
-            {
-                tether.ReleaseMinion();
-            }
+            NeuralTether.Instance.ReleaseMinion();
         }
     }
 }

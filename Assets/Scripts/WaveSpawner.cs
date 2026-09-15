@@ -22,9 +22,29 @@ public class WaveSpawner : MonoBehaviour
     [SerializeField] private float halfHeight = 10f;
     [SerializeField] private float spawnOffsetOutside = 1.5f;
 
+    public static readonly List<GameObject> activeEnemies = new List<GameObject>();
+    public static IReadOnlyList<GameObject> ActiveEnemies => activeEnemies;
+
+    public static void RegisterEnemy(GameObject enemy)
+    {
+        if (enemy != null && !activeEnemies.Contains(enemy))
+        {
+            activeEnemies.Add(enemy);
+        }
+    }
+
+    public static void UnregisterEnemy(GameObject enemy)
+    {
+        if (enemy != null)
+        {
+            activeEnemies.Remove(enemy);
+        }
+    }
+
     private float currentSpawnInterval;
     private float spawnTimer;
     private bool isSpawning = true;
+    private Collider2D[] cachedBoundaryColliders;
 
     public Transform Player { get => player; set => player = value; }
     public Transform PlayerTransform { get => player; set => player = value; }
@@ -70,9 +90,31 @@ public class WaveSpawner : MonoBehaviour
         currentSpawnInterval = initialSpawnInterval;
     }
 
+    private Transform playerTransform;
+
+    private void Awake()
+    {
+        CacheBoundaryColliders();
+    }
+
     private void Start()
     {
-        FindPlayer();
+        if (PlayerController.Instance != null)
+        {
+            playerTransform = PlayerController.Instance.transform;
+        }
+        else if (player != null)
+        {
+            playerTransform = player;
+        }
+        else
+        {
+            GameObject playerObj = GameObject.FindWithTag("Player");
+            if (playerObj != null) playerTransform = playerObj.transform;
+        }
+        player = playerTransform;
+
+        CacheBoundaryColliders();
 
         if (GameManager.Instance != null)
         {
@@ -87,14 +129,32 @@ public class WaveSpawner : MonoBehaviour
         isSpawning = true;
     }
 
-    private void FindPlayer()
+    private void CachePlayer()
     {
-        if (player != null && player.gameObject.activeInHierarchy) return;
+        if (playerTransform != null && playerTransform.gameObject.activeInHierarchy) return;
 
-        GameObject playerObj = GameObject.FindWithTag("Player") ?? GameObject.Find("Player");
+        if (PlayerController.Instance != null)
+        {
+            playerTransform = PlayerController.Instance.transform;
+            player = playerTransform;
+            return;
+        }
+
+        GameObject playerObj = GameObject.FindWithTag("Player");
         if (playerObj != null)
         {
-            player = playerObj.transform;
+            playerTransform = playerObj.transform;
+            player = playerTransform;
+        }
+    }
+
+    private void CacheBoundaryColliders()
+    {
+        if (cachedBoundaryColliders != null && cachedBoundaryColliders.Length > 0) return;
+        GameObject boundaryObj = GameObject.Find("Arena_Boundaries");
+        if (boundaryObj != null)
+        {
+            cachedBoundaryColliders = boundaryObj.GetComponentsInChildren<Collider2D>();
         }
     }
 
@@ -106,13 +166,14 @@ public class WaveSpawner : MonoBehaviour
             return;
         }
 
-        if (player == null || !player.gameObject.activeInHierarchy)
+        if (playerTransform == null)
         {
-            FindPlayer();
-            if (player == null || !player.gameObject.activeInHierarchy)
+            if (PlayerController.Instance != null)
             {
-                return;
+                playerTransform = PlayerController.Instance.transform;
+                player = playerTransform;
             }
+            if (playerTransform == null) return;
         }
 
         if (chaserPrefab == null && sniperPrefab == null)
@@ -141,7 +202,9 @@ public class WaveSpawner : MonoBehaviour
 
     public void ResetSpawner()
     {
-        FindPlayer();
+        CachePlayer();
+        CacheBoundaryColliders();
+        activeEnemies.RemoveAll(e => e == null);
         spawnTimer = 0f;
         if (GameManager.Instance != null)
         {
@@ -162,10 +225,14 @@ public class WaveSpawner : MonoBehaviour
 
     private void SpawnEnemyAlongPerimeter()
     {
-        if (player == null)
+        if (playerTransform == null)
         {
-            FindPlayer();
-            if (player == null) return;
+            if (PlayerController.Instance != null)
+            {
+                playerTransform = PlayerController.Instance.transform;
+                player = playerTransform;
+            }
+            if (playerTransform == null) return;
         }
 
         if (chaserPrefab == null && sniperPrefab == null)
@@ -190,6 +257,7 @@ public class WaveSpawner : MonoBehaviour
 
         if (spawnedEnemy != null)
         {
+            RegisterEnemy(spawnedEnemy);
             StartCoroutine(HandleEnemyArenaEntry(spawnedEnemy));
         }
     }
@@ -235,11 +303,13 @@ public class WaveSpawner : MonoBehaviour
         Collider2D enemyCollider = enemy.GetComponent<Collider2D>();
         if (enemyCollider == null || enemyCollider.isTrigger) yield break;
 
-        GameObject boundaryObj = GameObject.Find("Arena_Boundaries");
-        if (boundaryObj == null) yield break;
+        if (cachedBoundaryColliders == null || cachedBoundaryColliders.Length == 0)
+        {
+            CacheBoundaryColliders();
+        }
+        if (cachedBoundaryColliders == null || cachedBoundaryColliders.Length == 0) yield break;
 
-        Collider2D[] wallColliders = boundaryObj.GetComponentsInChildren<Collider2D>();
-        foreach (Collider2D wall in wallColliders)
+        foreach (Collider2D wall in cachedBoundaryColliders)
         {
             if (wall != null && enemyCollider != null)
             {
@@ -247,16 +317,18 @@ public class WaveSpawner : MonoBehaviour
             }
         }
 
-        // Wait until enemy has entered inside the arena boundaries
-        while (enemy != null && (Mathf.Abs(enemy.transform.position.x) > halfWidth || Mathf.Abs(enemy.transform.position.y) > halfHeight))
+        // Wait until enemy has entered inside the arena boundaries (with 2.5s safety timeout)
+        float timeout = 2.5f;
+        while (enemy != null && timeout > 0f && (Mathf.Abs(enemy.transform.position.x) > halfWidth || Mathf.Abs(enemy.transform.position.y) > halfHeight))
         {
+            timeout -= Time.deltaTime;
             yield return null;
         }
 
         // Restore wall collisions so enemy cannot escape
         if (enemy != null && enemyCollider != null)
         {
-            foreach (Collider2D wall in wallColliders)
+            foreach (Collider2D wall in cachedBoundaryColliders)
             {
                 if (wall != null && enemyCollider != null)
                 {

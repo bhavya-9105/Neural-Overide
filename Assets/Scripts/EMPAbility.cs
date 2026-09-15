@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 
@@ -53,36 +54,32 @@ public class EMPAbility : MonoBehaviour
     {
         nextEMPTime = Time.time + cooldown;
 
-#pragma warning disable 0618
-        // 1. Find all active EnemyChaser and SniperNode instances and call TakeDamage(999) on each
-        EnemyChaser[] chasers = Object.FindObjectsByType<EnemyChaser>(FindObjectsSortMode.None);
-        foreach (EnemyChaser chaser in chasers)
+        // 1. Eliminate all active enemy entities tracked in WaveSpawner without scene scans
+        List<GameObject> enemies = new List<GameObject>(WaveSpawner.activeEnemies);
+        foreach (GameObject enemyObj in enemies)
         {
-            if (chaser != null && chaser.gameObject.activeInHierarchy)
+            if (enemyObj == null) continue;
+
+            EnemyChaser chaser = enemyObj.GetComponent<EnemyChaser>();
+            if (chaser != null)
             {
                 chaser.TakeDamage(999);
+                continue;
             }
-        }
 
-        SniperNode[] snipers = Object.FindObjectsByType<SniperNode>(FindObjectsSortMode.None);
-        foreach (SniperNode sniper in snipers)
-        {
-            if (sniper != null && sniper.gameObject.activeInHierarchy)
+            SniperNode sniper = enemyObj.GetComponent<SniperNode>();
+            if (sniper != null)
             {
                 sniper.TakeDamage(999);
+                continue;
             }
-        }
 
-        // Also destroy any rogue projectiles in flight
-        EnemyProjectile[] projs = Object.FindObjectsByType<EnemyProjectile>(FindObjectsSortMode.None);
-        foreach (EnemyProjectile proj in projs)
-        {
-            if (proj != null && proj.gameObject.activeInHierarchy)
+            EnemyProjectile proj = enemyObj.GetComponent<EnemyProjectile>();
+            if (proj != null)
             {
                 Destroy(proj.gameObject);
             }
         }
-#pragma warning restore 0618
 
         // 2. Camera shake
         CameraFollow2D.TriggerShake(0.35f, 0.4f);

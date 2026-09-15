@@ -40,7 +40,7 @@ public class SniperNode : MonoBehaviour, IHijackable
         rb = GetComponent<Rigidbody2D>();
         rb.gravityScale = 0f;
         rb.freezeRotation = true;
-        rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        rb.collisionDetectionMode = CollisionDetectionMode2D.Discrete;
 
         CircleCollider2D col = GetComponent<CircleCollider2D>();
         col.isTrigger = false;
@@ -55,25 +55,36 @@ public class SniperNode : MonoBehaviour, IHijackable
         originalScale = transform.localScale;
 
         int enemiesLayer = LayerMask.NameToLayer("Enemies");
-        if (enemiesLayer == -1) enemiesLayer = LayerMask.NameToLayer("Enemy");
         if (enemiesLayer != -1 && (gameObject.layer == 0 || gameObject.layer == LayerMask.NameToLayer("Default")))
         {
             gameObject.layer = enemiesLayer;
         }
 
-        MiniMapMarker marker = GetComponent<MiniMapMarker>();
-        if (marker == null)
+
+    }
+
+    private void OnEnable()
+    {
+        WaveSpawner.RegisterEnemy(gameObject);
+        if (PlayerController.Instance != null)
         {
-            marker = gameObject.AddComponent<MiniMapMarker>();
+            playerTransform = PlayerController.Instance.transform;
         }
-        marker.markerType = MiniMapMarker.MarkerType.Sniper;
+    }
+
+    private void OnDisable()
+    {
+        WaveSpawner.UnregisterEnemy(gameObject);
     }
 
     public static readonly Color DefaultEnemyColor = new Color(0.984f, 0.443f, 0.522f, 1f); // Coral #FB7185
 
     private void Start()
     {
-        FindPlayer();
+        if (PlayerController.Instance != null)
+        {
+            playerTransform = PlayerController.Instance.transform;
+        }
 
         if (GameManager.Instance != null)
         {
@@ -84,15 +95,6 @@ public class SniperNode : MonoBehaviour, IHijackable
         {
             spriteRenderer.color = DefaultEnemyColor;
             originalColor = spriteRenderer.color;
-        }
-    }
-
-    private void FindPlayer()
-    {
-        GameObject playerObj = GameObject.FindWithTag("Player") ?? GameObject.Find("Player");
-        if (playerObj != null)
-        {
-            playerTransform = playerObj.transform;
         }
     }
 
@@ -140,10 +142,17 @@ public class SniperNode : MonoBehaviour, IHijackable
             return;
         }
 
-        // Wild Sniper aiming & shooting at player
+        // Wild Sniper aiming & shooting at player (using cached reference)
         if (playerTransform == null || !playerTransform.gameObject.activeInHierarchy)
         {
-            return;
+            if (PlayerController.Instance != null)
+            {
+                playerTransform = PlayerController.Instance.transform;
+            }
+            if (playerTransform == null || !playerTransform.gameObject.activeInHierarchy)
+            {
+                return;
+            }
         }
 
         Vector2 playerDir = ((Vector2)playerTransform.position - (Vector2)transform.position).normalized;
@@ -163,7 +172,16 @@ public class SniperNode : MonoBehaviour, IHijackable
 
     private void FixedUpdate()
     {
-        if (isDead) return;
+        if (isDead)
+        {
+            if (rb != null)
+            {
+#pragma warning disable 0618
+                rb.velocity = Vector2.zero;
+#pragma warning restore 0618
+            }
+            return;
+        }
 
         // If hijacked: move aggressively towards closest rogue node
         if (isHijacked)
@@ -175,23 +193,35 @@ public class SniperNode : MonoBehaviour, IHijackable
 
             if (minionTarget != null && rb != null)
             {
-                Vector2 myPos = rb.position;
-                Vector2 targetPos = minionTarget.position;
-                Vector2 newPos = Vector2.MoveTowards(myPos, targetPos, moveSpeed * 1.5f * Time.fixedDeltaTime);
-                rb.MovePosition(newPos);
+                Vector2 dir = ((Vector2)minionTarget.position - rb.position).normalized;
+#pragma warning disable 0618
+                rb.velocity = dir * (moveSpeed * 1.5f);
+#pragma warning restore 0618
+            }
+            else if (rb != null)
+            {
+#pragma warning disable 0618
+                rb.velocity = Vector2.zero;
+#pragma warning restore 0618
             }
             return;
         }
 
         // Wild Sniper: maintain distance from player
-        if (playerTransform == null || !playerTransform.gameObject.activeInHierarchy)
+        if (playerTransform == null)
         {
-            FindPlayer();
+            if (PlayerController.Instance != null)
+            {
+                playerTransform = PlayerController.Instance.transform;
+            }
             if (playerTransform == null)
             {
+                if (rb != null)
+                {
 #pragma warning disable 0618
-                rb.velocity = Vector2.zero;
+                    rb.velocity = Vector2.zero;
 #pragma warning restore 0618
+                }
                 return;
             }
         }
@@ -229,27 +259,38 @@ public class SniperNode : MonoBehaviour, IHijackable
         Transform bestTarget = null;
         Vector2 myPos = transform.position;
 
-        EnemyChaser[] chasers = Object.FindObjectsByType<EnemyChaser>();
-        foreach (EnemyChaser c in chasers)
+        var enemies = WaveSpawner.activeEnemies;
+        for (int i = enemies.Count - 1; i >= 0; i--)
         {
-            if (c == null || c.isHijacked || c.CurrentHealth <= 0) continue;
-            float d = Vector2.Distance(myPos, c.transform.position);
-            if (d < closestDist)
+            GameObject enemyObj = enemies[i];
+            if (enemyObj == null)
             {
-                closestDist = d;
-                bestTarget = c.transform;
+                enemies.RemoveAt(i);
+                continue;
             }
-        }
+            if (enemyObj == gameObject) continue;
 
-        SniperNode[] snipers = Object.FindObjectsByType<SniperNode>();
-        foreach (SniperNode s in snipers)
-        {
-            if (s == null || s == this || s.isHijacked || s.Health <= 0) continue;
-            float d = Vector2.Distance(myPos, s.transform.position);
-            if (d < closestDist)
+            EnemyChaser c = enemyObj.GetComponent<EnemyChaser>();
+            if (c != null && !c.isHijacked && !c.isDead && c.CurrentHealth > 0)
             {
-                closestDist = d;
-                bestTarget = s.transform;
+                float d = Vector2.Distance(myPos, c.transform.position);
+                if (d < closestDist)
+                {
+                    closestDist = d;
+                    bestTarget = c.transform;
+                }
+                continue;
+            }
+
+            SniperNode s = enemyObj.GetComponent<SniperNode>();
+            if (s != null && s != this && !s.isHijacked && s.Health > 0)
+            {
+                float d = Vector2.Distance(myPos, s.transform.position);
+                if (d < closestDist)
+                {
+                    closestDist = d;
+                    bestTarget = s.transform;
+                }
             }
         }
 
@@ -345,15 +386,9 @@ public class SniperNode : MonoBehaviour, IHijackable
             GameManager.Instance.IncrementEnemiesEliminated();
         }
 
-        if (isHijacked)
+        if (isHijacked && NeuralTether.Instance != null)
         {
-#pragma warning disable 0618
-            var tether = FindObjectOfType<NeuralTether>();
-#pragma warning restore 0618
-            if (tether != null)
-            {
-                tether.ReleaseMinion();
-            }
+            NeuralTether.Instance.ReleaseMinion();
         }
 
         Destroy(gameObject);
@@ -376,13 +411,7 @@ public class SniperNode : MonoBehaviour, IHijackable
             }
         }
 
-        // Radar line-of-fire indicator
-        MiniMapMarker marker = GetComponent<MiniMapMarker>();
-        if (marker != null)
-        {
-            Color rayCol = isHijacked ? new Color(0.024f, 0.714f, 0.831f, 1f) : new Color(1f, 0.8f, 0f, 1f); // Cyan if hijacked, Amber Gold if wild
-            marker.TriggerFiringRay(direction, 12f, rayCol);
-        }
+
     }
 
     public void TakeDamage(int amount)
@@ -472,6 +501,7 @@ public class SniperNode : MonoBehaviour, IHijackable
     {
         if (isDead) return;
         isDead = true;
+        WaveSpawner.UnregisterEnemy(gameObject);
 
         Collider2D col = GetComponent<Collider2D>();
         if (col != null) col.enabled = false;
@@ -485,15 +515,9 @@ public class SniperNode : MonoBehaviour, IHijackable
 
         SpawnDeathDebris();
 
-        if (isHijacked)
+        if (isHijacked && NeuralTether.Instance != null)
         {
-#pragma warning disable 0618
-            var tether = FindObjectOfType<NeuralTether>();
-#pragma warning restore 0618
-            if (tether != null)
-            {
-                tether.ReleaseMinion();
-            }
+            NeuralTether.Instance.ReleaseMinion();
         }
 
         Destroy(gameObject);
@@ -529,15 +553,10 @@ public class SniperNode : MonoBehaviour, IHijackable
 
     private void OnDestroy()
     {
-        if (isHijacked)
+        WaveSpawner.UnregisterEnemy(gameObject);
+        if (isHijacked && NeuralTether.Instance != null)
         {
-#pragma warning disable 0618
-            var tether = FindObjectOfType<NeuralTether>();
-#pragma warning restore 0618
-            if (tether != null)
-            {
-                tether.ReleaseMinion();
-            }
+            NeuralTether.Instance.ReleaseMinion();
         }
     }
 }

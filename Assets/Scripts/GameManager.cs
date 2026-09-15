@@ -37,6 +37,16 @@ public class GameManager : MonoBehaviour
 
     [Header("Survival Timer")]
     public float survivalTimeRemaining = 20f;
+    public float survivalTimer
+    {
+        get => survivalTimeRemaining;
+        set
+        {
+            survivalTimeRemaining = value;
+            survivalDuration = value;
+            totalSurvivalTime = value;
+        }
+    }
 
     [Header("Score & Combo")]
     public int currentScore = 0;
@@ -245,6 +255,12 @@ public class GameManager : MonoBehaviour
 
         EnemyProjectile[] projs = Object.FindObjectsByType<EnemyProjectile>(FindObjectsInactive.Include);
         foreach (EnemyProjectile p in projs) if (p != null) Destroy(p.gameObject);
+
+        WaveSpawner.activeEnemies.Clear();
+        if (MiniMapController.Instance != null)
+        {
+            MiniMapController.Instance.HideAllBlips();
+        }
     }
 
     private void Start()
@@ -288,8 +304,12 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // Normal fresh startup
-        SetDifficulty((int)currentDifficulty);
+        // Normal fresh startup: strictly reset to Level 1 (20s)
+        if (!PendingDifficultyIndex.HasValue)
+        {
+            currentLevel = 1;
+            SetDifficulty(0);
+        }
 
         if (startPanel != null)
         {
@@ -324,22 +344,25 @@ public class GameManager : MonoBehaviour
     public void SetDifficulty(int diff)
     {
         currentDifficulty = Mathf.Clamp(diff, 0, 2);
+        currentLevel = currentDifficulty + 1; // Level 1 (Easy: 20s), Level 2 (Normal: 50s), Level 3 (Hard: 90s)
 
-        switch (currentDifficulty)
+        // Enforce Level Timers explicitly per level index:
+        switch (currentLevel)
         {
-            case 0: // Easy (20s) - relaxed
+            case 1: // Level 1 (Easy): survivalTimer = 20f
                 survivalDuration = 20f;
                 totalSurvivalTime = 20f;
                 survivalTimeRemaining = 20f;
                 baseEnemySpeedMultiplier = 0.75f;
                 break;
-            case 1: // Normal (50s) - standard
+            case 2: // Level 2 (Normal): survivalTimer = 50f
                 survivalDuration = 50f;
                 totalSurvivalTime = 50f;
                 survivalTimeRemaining = 50f;
                 baseEnemySpeedMultiplier = 1.0f;
                 break;
-            case 2: // Expert (90s) - aggressive (0.7s, more snipers)
+            case 3: // Level 3 (Hard): survivalTimer = 90f
+            default:
                 survivalDuration = 90f;
                 totalSurvivalTime = 90f;
                 survivalTimeRemaining = 90f;
@@ -355,7 +378,7 @@ public class GameManager : MonoBehaviour
             spawner.ApplyDifficulty(currentDifficulty);
         }
 
-        Debug.Log($"[GameManager] Difficulty selected: {currentDifficulty} (Time: {survivalTimeRemaining}s, SpeedMult: {enemySpeedMultiplier}x)");
+        Debug.Log($"[GameManager] Difficulty selected: {currentDifficulty}, Level: {currentLevel} (Timer: {survivalTimeRemaining}s, SpeedMult: {enemySpeedMultiplier}x)");
     }
 
     public void ApplyDifficultyUITheme(Difficulty diff)
@@ -533,7 +556,27 @@ public class GameManager : MonoBehaviour
         comboCount = 0;
         comboTimer = 0f;
         currentMultiplier = 1;
-        survivalTimeRemaining = survivalDuration > 0f ? survivalDuration : totalSurvivalTime;
+        // Enforce Level Timers explicitly per level index:
+        // Level 1 (Easy): 20s, Level 2 (Normal): 50s, Level 3 (Hard): 90s
+        switch (currentLevel)
+        {
+            case 1:
+                survivalDuration = 20f;
+                totalSurvivalTime = 20f;
+                survivalTimeRemaining = 20f;
+                break;
+            case 2:
+                survivalDuration = 50f;
+                totalSurvivalTime = 50f;
+                survivalTimeRemaining = 50f;
+                break;
+            case 3:
+            default:
+                survivalDuration = 90f;
+                totalSurvivalTime = 90f;
+                survivalTimeRemaining = 90f;
+                break;
+        }
 
         SetMainMenuVisibility(false);
 
@@ -629,7 +672,8 @@ public class GameManager : MonoBehaviour
         comboTimer = 0f;
         currentMultiplier = 1;
 
-        SetDifficulty((int)currentDifficulty);
+        currentLevel = 1;
+        SetDifficulty(0);
 
         Debug.Log("[GameManager] Exited to Main Menu.");
     }
@@ -648,11 +692,7 @@ public class GameManager : MonoBehaviour
         PlayerController player = Object.FindAnyObjectByType<PlayerController>(FindObjectsInactive.Include);
         if (player != null)
         {
-            SpriteRenderer sr = player.GetComponent<SpriteRenderer>();
-            if (sr != null)
-            {
-                sr.enabled = !inMainMenu;
-            }
+            player.SetVisualsEnabled(!inMainMenu);
             player.transform.position = inMainMenu ? new Vector3(0f, -1000f, 0f) : Vector3.zero;
         }
 
@@ -938,7 +978,8 @@ public class GameManager : MonoBehaviour
         EnsureNextLevelButtonReferences();
 
         // Update Next Level Button text/state on victory:
-        if (currentDifficulty == 0)
+        // Update Next Level Button text/state on victory:
+        if (currentLevel == 1)
         {
             if (nextLevelBtn != null) nextLevelBtn.SetActive(true);
             if (nextLevelButtonText != null)
@@ -946,7 +987,7 @@ public class GameManager : MonoBehaviour
                 nextLevelButtonText.text = "ADVANCE TO NORMAL PROTOCOL (50s)";
             }
         }
-        else if (currentDifficulty == 1)
+        else if (currentLevel == 2)
         {
             if (nextLevelBtn != null) nextLevelBtn.SetActive(true);
             if (nextLevelButtonText != null)
@@ -954,7 +995,7 @@ public class GameManager : MonoBehaviour
                 nextLevelButtonText.text = "ADVANCE TO EXPERT PROTOCOL (90s)";
             }
         }
-        else // currentDifficulty == 2
+        else // currentLevel >= 3
         {
             if (nextLevelBtn != null)
             {
@@ -997,21 +1038,49 @@ public class GameManager : MonoBehaviour
             victoryPanel.SetActive(false);
         }
 
-        // Escalate difficulty:
-        if (currentDifficulty == 0)
+        // Advance level linearly: Level 1 -> Level 2 -> Level 3
+        currentLevel++;
+        if (currentLevel > 3)
         {
-            SetDifficulty(1); // Advance to Normal
-        }
-        else if (currentDifficulty == 1)
-        {
-            SetDifficulty(2); // Advance to Expert / Hard
-        }
-        else
-        {
-            SetDifficulty(2); // Remain on Expert
+            currentLevel = 3;
         }
 
-        currentLevel = currentDifficulty + 1;
+        currentDifficulty = Mathf.Clamp(currentLevel - 1, 0, 2);
+
+        // Enforce Level Timers explicitly per level index:
+        // Level 1 (Easy): survivalTimer = 20f;
+        // Level 2 (Normal): survivalTimer = 50f;
+        // Level 3 (Hard): survivalTimer = 90f;
+        switch (currentLevel)
+        {
+            case 1:
+                survivalDuration = 20f;
+                totalSurvivalTime = 20f;
+                survivalTimeRemaining = 20f;
+                baseEnemySpeedMultiplier = 0.75f;
+                break;
+            case 2:
+                survivalDuration = 50f;
+                totalSurvivalTime = 50f;
+                survivalTimeRemaining = 50f;
+                baseEnemySpeedMultiplier = 1.0f;
+                break;
+            case 3:
+            default:
+                survivalDuration = 90f;
+                totalSurvivalTime = 90f;
+                survivalTimeRemaining = 90f;
+                baseEnemySpeedMultiplier = 1.35f;
+                break;
+        }
+
+        ApplyDifficultyUITheme(currentDifficulty);
+
+        WaveSpawner spawner = Object.FindAnyObjectByType<WaveSpawner>(FindObjectsInactive.Include);
+        if (spawner != null)
+        {
+            spawner.ApplyDifficulty(currentDifficulty);
+        }
 
         // Restart/re-initialize the round with the updated difficulty parameters:
         // Reset player position and health (5/5).
@@ -1037,7 +1106,7 @@ public class GameManager : MonoBehaviour
 
         StartGame();
 
-        Debug.Log($"[GameManager] NextLevel: Difficulty escalated to {currentDifficulty} (Time: {survivalTimeRemaining}s). Level {currentLevel} re-initialized.");
+        Debug.Log($"[GameManager] NextLevel: Advanced linearly to Level {currentLevel}, Difficulty {currentDifficulty} (Timer: {survivalTimeRemaining}s).");
     }
 
     /// <summary>
@@ -1065,6 +1134,25 @@ public class GameManager : MonoBehaviour
             tether.ReleaseMinion();
         }
         SetDifficulty(currentDifficulty);
+        switch (currentLevel)
+        {
+            case 1:
+                survivalDuration = 20f;
+                totalSurvivalTime = 20f;
+                survivalTimeRemaining = 20f;
+                break;
+            case 2:
+                survivalDuration = 50f;
+                totalSurvivalTime = 50f;
+                survivalTimeRemaining = 50f;
+                break;
+            case 3:
+            default:
+                survivalDuration = 90f;
+                totalSurvivalTime = 90f;
+                survivalTimeRemaining = 90f;
+                break;
+        }
         StartGame();
     }
 

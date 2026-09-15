@@ -14,8 +14,8 @@ GameObject:
   - component: {fileID: 8991841563602147363}
   - component: {fileID: 3253190313379014584}
   - component: {fileID: 2327972244254294534}
-  - component: {fileID: 693672110805844727}
-  m_Layer: 8
+  - component: {fileID: 1009106164407228257}
+  m_Layer: 11
   m_Name: ChaserEnemy
   m_TagString: Enemy
   m_Icon: {fileID: 0}
@@ -122,7 +122,7 @@ Rigidbody2D:
     m_Bits: 0
   m_Interpolate: 0
   m_SleepingMode: 1
-  m_CollisionDetection: 1
+  m_CollisionDetection: 0
   m_Constraints: 4
 --- !u!58 &8991841563602147363
 CircleCollider2D:
@@ -193,7 +193,8 @@ MonoBehaviour:
   animator: {fileID: 0}
   hitFlashDuration: 0.05
   isHijacked: 0
---- !u!114 &693672110805844727
+  isDead: 0
+--- !u!114 &1009106164407228257
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -206,4 +207,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MiniMapMarker
   markerType: 1
-  localOffset: {x: 0, y: 0, z: 0}
+  customColor: {r: 1, g: 0.2, b: 0.2, a: 1}
+  blipSize: {x: 8, y: 8}

@@ -1,3 +1,4 @@
+#pragma warning disable 0618
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -5,6 +6,8 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody2D), typeof(CircleCollider2D))]
 public class PlayerController : MonoBehaviour
 {
+    public static PlayerController Instance { get; private set; }
+
     [Header("Movement Settings")]
     [SerializeField] private float moveSpeed = 5f;
 #pragma warning disable 0414
@@ -46,54 +49,81 @@ public class PlayerController : MonoBehaviour
 
     private Rigidbody2D rb;
     private Vector2 moveInput;
+    private Camera cachedMainCam;
 
-    [Header("4-Directional Aim Sprites")]
+    [Header("Visual Root & Body Sprites")]
+    public Transform visualRoot;
+    public SpriteRenderer bodySpriteRenderer;
     public Sprite spriteFront; // Down shooting sprite
     public Sprite spriteBack;  // Up shooting sprite
     public Sprite spriteSide;  // Side profile sprite
+
+    [Header("360° Weapon Aiming")]
+    public Transform weaponPivot;
+    public Transform weaponSprite;
+    public SpriteRenderer weaponSpriteRenderer;
     public Transform muzzlePoint; // Child transform for weapon fire origin
-    private SpriteRenderer spriteRenderer;
+    public Sprite weaponSpriteAsset;
+
+    [Header("Procedural Motion Juice")]
+    public Vector2 recoilOffset = Vector2.zero;
+    [SerializeField] private float recoilRecoverySpeed = 12f;
+    [SerializeField] private float scaleRecoverySpeed = 12f;
+
+    // Backward compatibility property for existing references
+    public SpriteRenderer spriteRenderer => bodySpriteRenderer;
 
     [Header("Arena Boundary Settings")]
     [SerializeField] private float halfWidth = 18f;
     [SerializeField] private float halfHeight = 10f;
 
-    public bool IsDead { get; private set; } = false;
+    public float HalfWidth { get => halfWidth; set => halfWidth = value; }
+    public float HalfHeight { get => halfHeight; set => halfHeight = value; }
+    public Rigidbody2D Rb => rb;
     public int CurrentHealth => currentHealth;
     public int MaxHealth => maxHealth;
     public float MoveSpeed { get => moveSpeed; set => moveSpeed = value; }
     public bool IsInvulnerable => isInvulnerable;
-    public float HalfWidth { get => halfWidth; set => halfWidth = value; }
-    public float HalfHeight { get => halfHeight; set => halfHeight = value; }
+    public bool IsDead { get; set; } = false;
+
+    private Vector2 RbVelocity
+    {
+        get
+        {
+#if UNITY_6000_0_OR_NEWER
+            return rb != null ? rb.linearVelocity : Vector2.zero;
+#else
+            return rb != null ? rb.velocity : Vector2.zero;
+#endif
+        }
+        set
+        {
+            if (rb != null)
+            {
+#if UNITY_6000_0_OR_NEWER
+                rb.linearVelocity = value;
+#else
+                rb.velocity = value;
+#endif
+            }
+        }
+    }
 
     private void Awake()
     {
+        Instance = this;
         rb = GetComponent<Rigidbody2D>();
         if (rb != null)
         {
             rb.gravityScale = 0f;
             rb.freezeRotation = true;
-            rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+            rb.collisionDetectionMode = CollisionDetectionMode2D.Discrete;
+            rb.interpolation = RigidbodyInterpolation2D.Interpolate;
         }
 
-        spriteRenderer = GetComponent<SpriteRenderer>();
         transform.rotation = Quaternion.identity;
 
-        if (muzzlePoint == null)
-        {
-            Transform mChild = transform.Find("MuzzlePoint");
-            if (mChild != null)
-            {
-                muzzlePoint = mChild;
-            }
-            else
-            {
-                GameObject mObj = new GameObject("MuzzlePoint");
-                mObj.transform.SetParent(transform);
-                mObj.transform.localPosition = new Vector3(0f, 0.6f, 0f);
-                muzzlePoint = mObj.transform;
-            }
-        }
+        EnsureVisualHierarchy();
 
         if (animator == null)
         {
@@ -110,28 +140,159 @@ public class PlayerController : MonoBehaviour
         IsDead = false;
         isInvulnerable = false;
 
-        MiniMapMarker marker = GetComponent<MiniMapMarker>();
-        if (marker == null)
-        {
-            marker = gameObject.AddComponent<MiniMapMarker>();
-        }
-        marker.markerType = MiniMapMarker.MarkerType.Player;
+        int enemiesMask = LayerMask.GetMask("Enemies");
+        shootLayers = enemiesMask != 0 ? enemiesMask : (1 << 11);
+
+        if (cachedMainCam == null) cachedMainCam = Camera.main;
     }
 
     private void Start()
     {
-        if (spriteRenderer == null)
-        {
-            spriteRenderer = GetComponent<SpriteRenderer>();
-        }
         transform.rotation = Quaternion.identity;
+        EnsureVisualHierarchy();
 
-        if (muzzlePoint == null)
+        if (bodySpriteRenderer != null && bodySpriteRenderer.sprite == null && spriteFront != null)
         {
-            Transform mChild = transform.Find("MuzzlePoint");
-            if (mChild != null)
+            bodySpriteRenderer.sprite = spriteFront;
+        }
+        if (weaponSpriteRenderer != null && weaponSpriteRenderer.sprite == null && weaponSpriteAsset != null)
+        {
+            weaponSpriteRenderer.sprite = weaponSpriteAsset;
+        }
+    }
+
+    /// <summary>
+    /// Self-healing initialization for VisualRoot, BodySprite, WeaponPivot, WeaponSprite, and MuzzlePoint.
+    /// </summary>
+    public void EnsureVisualHierarchy()
+    {
+        // 1. VisualRoot (holds visual components, bob, tilt, and recoil offsets without moving physical collider)
+        if (visualRoot == null)
+        {
+            Transform vChild = transform.Find("VisualRoot");
+            if (vChild != null)
             {
-                muzzlePoint = mChild;
+                visualRoot = vChild;
+            }
+            else
+            {
+                GameObject vObj = new GameObject("VisualRoot");
+                vObj.transform.SetParent(transform, false);
+                vObj.transform.localPosition = Vector3.zero;
+                vObj.transform.localRotation = Quaternion.identity;
+                vObj.transform.localScale = Vector3.one;
+                visualRoot = vObj.transform;
+            }
+        }
+
+        // 2. Body SpriteRenderer
+        if (bodySpriteRenderer == null)
+        {
+            if (visualRoot != null)
+            {
+                Transform bodyChild = visualRoot.Find("Body");
+                if (bodyChild != null)
+                {
+                    bodySpriteRenderer = bodyChild.GetComponent<SpriteRenderer>();
+                }
+                else
+                {
+                    bodySpriteRenderer = visualRoot.GetComponent<SpriteRenderer>();
+                }
+            }
+            if (bodySpriteRenderer == null)
+            {
+                bodySpriteRenderer = GetComponent<SpriteRenderer>();
+            }
+        }
+
+        // 3. WeaponPivot (rotates 360° towards mouse cursor)
+        Transform weaponParent = visualRoot != null ? visualRoot : transform;
+        if (weaponPivot == null)
+        {
+            Transform wpChild = weaponParent.Find("WeaponPivot") ?? transform.Find("WeaponPivot");
+            if (wpChild != null)
+            {
+                weaponPivot = wpChild;
+                if (weaponPivot.parent != weaponParent)
+                {
+                    weaponPivot.SetParent(weaponParent, false);
+                }
+            }
+            else
+            {
+                GameObject wpObj = new GameObject("WeaponPivot");
+                wpObj.transform.SetParent(weaponParent, false);
+                wpObj.transform.localPosition = Vector3.zero;
+                wpObj.transform.localRotation = Quaternion.identity;
+                weaponPivot = wpObj.transform;
+            }
+        }
+
+        // 4. WeaponSprite (child of WeaponPivot offset forward by x: 0.45, y: 0)
+        if (weaponPivot != null)
+        {
+            if (weaponSprite == null)
+            {
+                weaponSprite = weaponPivot.Find("WeaponSprite");
+            }
+            if (weaponSprite == null)
+            {
+                GameObject wsObj = new GameObject("WeaponSprite");
+                wsObj.transform.SetParent(weaponPivot, false);
+                wsObj.transform.localPosition = new Vector3(0.45f, 0f, 0f);
+                wsObj.transform.localRotation = Quaternion.identity;
+                weaponSprite = wsObj.transform;
+            }
+            else
+            {
+                weaponSprite.localPosition = new Vector3(0.45f, 0f, 0f);
+            }
+
+            if (weaponSpriteRenderer == null && weaponSprite != null)
+            {
+                weaponSpriteRenderer = weaponSprite.GetComponent<SpriteRenderer>() ?? weaponSprite.gameObject.AddComponent<SpriteRenderer>();
+            }
+            if (weaponSpriteRenderer != null)
+            {
+                weaponSpriteRenderer.sortingOrder = 5;
+                if (weaponSpriteRenderer.sprite == null && weaponSpriteAsset != null)
+                {
+                    weaponSpriteRenderer.sprite = weaponSpriteAsset;
+                }
+            }
+
+            // 5. MuzzlePoint (child of WeaponPivot offset forward at x: 0.8, y: 0)
+            if (muzzlePoint == null)
+            {
+                muzzlePoint = weaponPivot.Find("MuzzlePoint");
+            }
+            if (muzzlePoint == null)
+            {
+                Transform oldMp = transform.Find("MuzzlePoint");
+                if (oldMp != null)
+                {
+                    oldMp.SetParent(weaponPivot, false);
+                    oldMp.localPosition = new Vector3(0.8f, 0f, 0f);
+                    oldMp.localRotation = Quaternion.identity;
+                    muzzlePoint = oldMp;
+                }
+                else
+                {
+                    GameObject mpObj = new GameObject("MuzzlePoint");
+                    mpObj.transform.SetParent(weaponPivot, false);
+                    mpObj.transform.localPosition = new Vector3(0.8f, 0f, 0f);
+                    mpObj.transform.localRotation = Quaternion.identity;
+                    muzzlePoint = mpObj.transform;
+                }
+            }
+            else
+            {
+                if (muzzlePoint.parent != weaponPivot)
+                {
+                    muzzlePoint.SetParent(weaponPivot, false);
+                }
+                muzzlePoint.localPosition = new Vector3(0.8f, 0f, 0f);
             }
         }
     }
@@ -151,8 +312,17 @@ public class PlayerController : MonoBehaviour
         // Lock Transform rotation: do NOT rotate player main transform
         transform.rotation = Quaternion.identity;
 
-        // 4-Directional Aim & Sprite Swapping
+        // 360-Degree Weapon Aiming & 4-Quadrant Body Sprite
         UpdateAimAndSprite();
+
+        // Procedural Motion Juice: smoothly recover scale back to Vector3.one
+        transform.localScale = Vector3.Lerp(transform.localScale, Vector3.one, scaleRecoverySpeed * Time.deltaTime);
+
+        // Smoothly decay recoilOffset back to Vector2.zero
+        recoilOffset = Vector2.Lerp(recoilOffset, Vector2.zero, recoilRecoverySpeed * Time.deltaTime);
+
+        // Dynamic Walking Bob & Lean Tilt
+        ApplyMovementJuice();
 
         // 8-directional input via Input.GetAxisRaw("Horizontal") and "Vertical", normalized
         float horizontal = Input.GetAxisRaw("Horizontal");
@@ -170,9 +340,6 @@ public class PlayerController : MonoBehaviour
         {
             ShootRaycast();
         }
-
-        // Hard Position Clamping Fallback
-        ClampPositionToBounds();
     }
 
     private void LateUpdate()
@@ -182,11 +349,12 @@ public class PlayerController : MonoBehaviour
     }
 
     /// <summary>
-    /// Calculates angle toward mouse cursor in world space and updates 4-directional sprite state and muzzlePoint.
+    /// Computes aim direction towards mouse cursor in world space and applies 360° weapon rotation and body sprite.
     /// </summary>
     private void UpdateAimAndSprite()
     {
-        Camera mainCam = Camera.main;
+        if (cachedMainCam == null) cachedMainCam = Camera.main;
+        Camera mainCam = cachedMainCam;
         if (mainCam == null) return;
 
         Vector3 mouseScreen = Input.mousePosition;
@@ -195,90 +363,132 @@ public class PlayerController : MonoBehaviour
         Vector2 aimDir = ((Vector2)mousePos - (Vector2)transform.position).normalized;
         if (aimDir == Vector2.zero)
         {
-            aimDir = Vector2.up;
+            aimDir = Vector2.right;
         }
 
         ApplyAimDirection(aimDir);
     }
 
     /// <summary>
-    /// Applies 4-directional sprite swapping and positions the muzzlePoint towards aimDir.
+    /// Rotates WeaponPivot 360° to aimDir, flips WeaponSprite vertically when aiming left,
+    /// and selects body sprite & flipX based on 4-quadrant aimDir.
     /// </summary>
     public void ApplyAimDirection(Vector2 aimDir)
     {
         float angle = Mathf.Atan2(aimDir.y, aimDir.x) * Mathf.Rad2Deg;
 
-        if (spriteRenderer != null)
+        // Rotate WeaponPivot: weaponPivot.rotation = Quaternion.Euler(0, 0, angle);
+        if (weaponPivot != null)
         {
-            if (angle >= 67.5f && angle < 112.5f)
+            weaponPivot.rotation = Quaternion.Euler(0f, 0f, angle);
+        }
+
+        // Flip WeaponSprite vertically when aiming left: weaponSpriteRenderer.flipY = (angle > 90f || angle < -90f);
+        if (weaponSpriteRenderer != null)
+        {
+            weaponSpriteRenderer.flipY = (angle > 90f || angle < -90f);
+        }
+
+        // Update Body/Torso Sprite:
+        if (bodySpriteRenderer != null)
+        {
+            bool isHorizontal = Mathf.Abs(aimDir.x) > Mathf.Abs(aimDir.y);
+            bodySpriteRenderer.flipX = (aimDir.x < 0 && isHorizontal);
+
+            if (isHorizontal)
             {
-                // UP (67.5° <= angle < 112.5°)
-                if (spriteBack != null) spriteRenderer.sprite = spriteBack;
-                spriteRenderer.flipX = false;
-            }
-            else if (angle >= -112.5f && angle < -67.5f)
-            {
-                // DOWN (-112.5° <= angle < -67.5°)
-                if (spriteFront != null) spriteRenderer.sprite = spriteFront;
-                spriteRenderer.flipX = false;
-            }
-            else if (angle >= -67.5f && angle < 67.5f)
-            {
-                // RIGHT (-67.5° <= angle < 67.5°)
-                if (spriteSide != null) spriteRenderer.sprite = spriteSide;
-                spriteRenderer.flipX = false;
+                if (spriteSide != null) bodySpriteRenderer.sprite = spriteSide;
             }
             else
             {
-                // LEFT (angle >= 112.5° || angle < -112.5°)
-                if (spriteSide != null) spriteRenderer.sprite = spriteSide;
-                spriteRenderer.flipX = true;
+                if (aimDir.y > 0)
+                {
+                    if (spriteBack != null) bodySpriteRenderer.sprite = spriteBack;
+                }
+                else
+                {
+                    if (spriteFront != null) bodySpriteRenderer.sprite = spriteFront;
+                }
             }
         }
+    }
 
-        if (muzzlePoint != null)
+    /// <summary>
+    /// Applies dynamic walking sine-wave bob and velocity lean tilt to visualRoot without modifying physics collider.
+    /// </summary>
+    private void ApplyMovementJuice()
+    {
+        float bob = 0f;
+        float tiltAngle = 0f;
+
+        Vector2 currentVel = RbVelocity;
+        if (currentVel.sqrMagnitude > 0.01f || moveInput.sqrMagnitude > 0.01f)
         {
-            muzzlePoint.position = (Vector2)transform.position + aimDir * 0.6f;
-            muzzlePoint.up = aimDir;
+            bob = Mathf.Sin(Time.time * 12f) * 0.04f;
+            tiltAngle = -moveInput.x * 4.0f;
         }
+
+        if (visualRoot != null)
+        {
+            visualRoot.localPosition = new Vector3(0f, bob, 0f) + (Vector3)recoilOffset;
+            visualRoot.localRotation = Quaternion.Euler(0f, 0f, tiltAngle);
+        }
+        else
+        {
+            if (bodySpriteRenderer != null)
+            {
+                bodySpriteRenderer.transform.localPosition = new Vector3(0f, bob, 0f) + (Vector3)recoilOffset;
+                bodySpriteRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, tiltAngle);
+            }
+            if (weaponPivot != null)
+            {
+                weaponPivot.localPosition = new Vector3(0f, bob, 0f) + (Vector3)recoilOffset;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Triggers procedural recoil impulse: instant visual recoil offset and squash scale.
+    /// </summary>
+    public void TriggerRecoil(Vector2 shootDirection)
+    {
+        recoilOffset = -shootDirection.normalized * 0.15f;
+        transform.localScale = new Vector3(0.85f, 1.15f, 1.0f);
+    }
+
+    /// <summary>
+    /// Toggles body and weapon sprite renderers simultaneously.
+    /// </summary>
+    public void SetVisualsEnabled(bool isEnabled)
+    {
+        if (bodySpriteRenderer != null) bodySpriteRenderer.enabled = isEnabled;
+        if (weaponSpriteRenderer != null) weaponSpriteRenderer.enabled = isEnabled;
     }
 
     private void FixedUpdate()
     {
         if (IsDead || currentHealth <= 0)
         {
-            if (rb != null)
-            {
-#pragma warning disable 0618
-                rb.velocity = Vector2.zero;
-#pragma warning restore 0618
-            }
+            RbVelocity = Vector2.zero;
             return;
         }
 
-        if (rb != null)
+        if (rb == null) return;
+
+        // Physics updates run strictly inside FixedUpdate() using rigidbody.velocity
+        Vector2 targetVel = moveInput * moveSpeed;
+
+        Vector2 pos = rb.position;
+        if ((pos.x <= -halfWidth + 0.5f && targetVel.x < 0) || (pos.x >= halfWidth - 0.5f && targetVel.x > 0))
         {
-#pragma warning disable 0618
-            rb.velocity = moveInput * moveSpeed;
-#pragma warning restore 0618
+            targetVel.x = 0;
+        }
+        if ((pos.y <= -halfHeight + 0.5f && targetVel.y < 0) || (pos.y >= halfHeight - 0.5f && targetVel.y > 0))
+        {
+            targetVel.y = 0;
         }
 
-        // Hard Position Clamping Fallback: ensure velocity or dash forces never penetrate outside the boundary
-        ClampPositionToBounds();
-    }
-
-    private void ClampPositionToBounds()
-    {
-        transform.position = new Vector3(
-            Mathf.Clamp(transform.position.x, -halfWidth + 0.5f, halfWidth - 0.5f),
-            Mathf.Clamp(transform.position.y, -halfHeight + 0.5f, halfHeight - 0.5f),
-            0f
-        );
-
-        if (rb != null)
-        {
-            rb.position = transform.position;
-        }
+        RbVelocity = targetVel;
     }
 
     /// <summary>
@@ -413,12 +623,7 @@ public class PlayerController : MonoBehaviour
         {
             IsDead = true;
             moveInput = Vector2.zero;
-            if (rb != null)
-            {
-#pragma warning disable 0618
-                rb.velocity = Vector2.zero;
-#pragma warning restore 0618
-            }
+            RbVelocity = Vector2.zero;
 
             // Disable player collider so dead body doesn't block or take hits
             Collider2D col = GetComponent<Collider2D>();
@@ -493,12 +698,7 @@ public class PlayerController : MonoBehaviour
             muzzlePoint.up = Vector2.up;
         }
 
-        if (rb != null)
-        {
-#pragma warning disable 0618
-            rb.velocity = Vector2.zero;
-#pragma warning restore 0618
-        }
+        RbVelocity = Vector2.zero;
 
         if (animator != null)
         {
@@ -520,7 +720,10 @@ public class PlayerController : MonoBehaviour
 
         if (direction == Vector2.zero) direction = transform.right;
 
-        RaycastHit2D hit = Physics2D.Raycast(origin, direction, shootRange, shootLayers);
+        int targetMask = LayerMask.GetMask("Enemies");
+        if (targetMask == 0) targetMask = shootLayers != 0 ? shootLayers.value : (1 << 11);
+
+        RaycastHit2D hit = Physics2D.Raycast(origin, direction, shootRange, targetMask);
         Vector3 hitPoint = origin + direction * shootRange;
 
         if (hit.collider != null)
@@ -554,13 +757,7 @@ public class PlayerController : MonoBehaviour
             beamCoroutine = StartCoroutine(ShowBeam(origin, hitPoint));
         }
 
-        // Radar line-of-fire indicator
-        MiniMapMarker marker = GetComponent<MiniMapMarker>();
-        if (marker != null)
-        {
-            ColorUtility.TryParseHtmlString("#06B6D4", out Color cyanCol);
-            marker.TriggerFiringRay(direction, shootRange, cyanCol);
-        }
+
 
         if (GameManager.Instance != null)
         {
@@ -581,5 +778,13 @@ public class PlayerController : MonoBehaviour
 
         shootLine.enabled = false;
         beamCoroutine = null;
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this)
+        {
+            Instance = null;
+        }
     }
 }

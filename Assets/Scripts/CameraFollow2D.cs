@@ -11,13 +11,24 @@ public class CameraFollow2D : MonoBehaviour
 
     [Header("Follow Settings")]
     [SerializeField] private float smoothSpeed = 5f;
+    [SerializeField] private float lookAheadDistance = 1.8f;
+    [SerializeField] private float smoothTime = 0.12f;
+    [SerializeField] private bool clampToBounds = true;
+    [SerializeField] private Vector2 minBounds = new Vector2(-12f, -6f);
+    [SerializeField] private Vector2 maxBounds = new Vector2(12f, 6f);
 
+    private Vector3 currentVelocity = Vector3.zero;
     private Vector3 currentBasePosition;
     private Vector3 shakeOffset = Vector3.zero;
     private Coroutine shakeCoroutine;
 
     public Transform Target { get => target; set => target = value; }
     public float SmoothSpeed { get => smoothSpeed; set => smoothSpeed = value; }
+    public float LookAheadDistance { get => lookAheadDistance; set => lookAheadDistance = value; }
+    public float SmoothTime { get => smoothTime; set => smoothTime = value; }
+    public bool ClampToBounds { get => clampToBounds; set => clampToBounds = value; }
+    public Vector2 MinBounds { get => minBounds; set => minBounds = value; }
+    public Vector2 MaxBounds { get => maxBounds; set => maxBounds = value; }
 
     private void Awake()
     {
@@ -34,8 +45,11 @@ public class CameraFollow2D : MonoBehaviour
 
     private void Start()
     {
-        // In Start(), if target == null, attempt GameObject.FindWithTag("Player").transform
-        if (target == null)
+        if (target == null && PlayerController.Instance != null)
+        {
+            target = PlayerController.Instance.transform;
+        }
+        else if (target == null)
         {
             GameObject playerObj = GameObject.FindWithTag("Player");
             if (playerObj != null)
@@ -46,39 +60,28 @@ public class CameraFollow2D : MonoBehaviour
 
         if (target != null)
         {
-            currentBasePosition = new Vector3(target.position.x, target.position.y, -10f);
+            transform.position = new Vector3(target.position.x, target.position.y, -10f);
         }
         else
         {
-            currentBasePosition = new Vector3(transform.position.x, transform.position.y, -10f);
+            transform.position = new Vector3(transform.position.x, transform.position.y, -10f);
         }
-
-        transform.position = currentBasePosition;
     }
 
-    // Use LateUpdate() strictly for camera movement (never Update or FixedUpdate) to prevent physics-induced jitter
+    // Direct camera lock to player in LateUpdate to eliminate frame drops and physics jitter
     private void LateUpdate()
     {
         if (target == null)
         {
-            GameObject playerObj = GameObject.FindWithTag("Player");
-            if (playerObj != null)
+            if (PlayerController.Instance != null)
             {
-                target = playerObj.transform;
+                target = PlayerController.Instance.transform;
             }
-            else
-            {
-                return;
-            }
+            if (target == null) return;
         }
 
-        // Smooth position interpolation towards the player target using Vector3.Lerp:
-        Vector3 desiredPosition = new Vector3(target.position.x, target.position.y, -10f);
-        Vector3 smoothedPosition = Vector3.Lerp(currentBasePosition, desiredPosition, smoothSpeed * Time.deltaTime);
-        currentBasePosition = smoothedPosition;
-
-        // Add shake offset as an independent additive Vector3, not overriding the base position:
-        transform.position = smoothedPosition + shakeOffset;
+        // Lock camera position strictly to player without SmoothDamp or per-frame scene searches
+        transform.position = new Vector3(target.position.x, target.position.y, -10f) + shakeOffset;
     }
 
     // Static trigger so scripts can call CameraFollow2D.TriggerShake(duration, magnitude) directly

@@ -2,13 +2,35 @@ using UnityEngine;
 
 public class ChaserNode : MonoBehaviour
 {
-    private void Awake()
+    private Transform playerTransform;
+    public Transform PlayerTransform => playerTransform;
+
+
+
+    private void OnEnable()
     {
-        MiniMapMarker marker = GetComponent<MiniMapMarker>();
-        if (marker == null)
+        WaveSpawner.RegisterEnemy(gameObject);
+        if (PlayerController.Instance != null)
         {
-            marker = gameObject.AddComponent<MiniMapMarker>();
+            playerTransform = PlayerController.Instance.transform;
         }
-        marker.markerType = MiniMapMarker.MarkerType.Chaser;
+    }
+
+    private void Start()
+    {
+        if (PlayerController.Instance != null)
+        {
+            playerTransform = PlayerController.Instance.transform;
+        }
+    }
+
+    private void OnDisable()
+    {
+        WaveSpawner.UnregisterEnemy(gameObject);
+    }
+
+    private void OnDestroy()
+    {
+        WaveSpawner.UnregisterEnemy(gameObject);
     }
 }

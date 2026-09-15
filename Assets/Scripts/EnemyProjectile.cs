@@ -39,7 +39,7 @@ public class EnemyProjectile : MonoBehaviour
         if (rb == null) rb = gameObject.AddComponent<Rigidbody2D>();
         rb.gravityScale = 0f;
         rb.freezeRotation = true;
-        rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        rb.collisionDetectionMode = CollisionDetectionMode2D.Discrete;
 
         CircleCollider2D col = GetComponent<CircleCollider2D>();
         if (col == null)
@@ -49,24 +49,44 @@ public class EnemyProjectile : MonoBehaviour
         }
         col.isTrigger = false;
 
-        // Ensure projectile is on a shootable layer ("Enemies" or "Enemy")
-        int enemyLayerIndex = LayerMask.NameToLayer("Enemy");
-        if (enemyLayerIndex == -1) enemyLayerIndex = LayerMask.NameToLayer("Enemy");
+        // Ensure projectile is on a shootable layer ("Enemies")
+        int enemyLayerIndex = LayerMask.NameToLayer("Enemies");
         if (enemyLayerIndex != -1 && (gameObject.layer == 0 || gameObject.layer == LayerMask.NameToLayer("Default")))
         {
             gameObject.layer = enemyLayerIndex;
         }
 
-        MiniMapMarker marker = GetComponent<MiniMapMarker>();
-        if (marker == null)
-        {
-            marker = gameObject.AddComponent<MiniMapMarker>();
-        }
-        marker.markerType = MiniMapMarker.MarkerType.Grenade;
+
     }
+
+    private void OnEnable()
+    {
+        WaveSpawner.RegisterEnemy(gameObject);
+        if (PlayerController.Instance != null)
+        {
+            playerTransform = PlayerController.Instance.transform;
+        }
+    }
+
+    private void OnDisable()
+    {
+        WaveSpawner.UnregisterEnemy(gameObject);
+    }
+
+    private void OnDestroy()
+    {
+        WaveSpawner.UnregisterEnemy(gameObject);
+    }
+
+    private Transform playerTransform;
 
     private void Start()
     {
+        if (PlayerController.Instance != null)
+        {
+            playerTransform = PlayerController.Instance.transform;
+        }
+
         if (moveDirection != Vector2.zero && rb != null)
         {
 #pragma warning disable 0618
