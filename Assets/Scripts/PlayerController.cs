@@ -304,6 +304,11 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
+        if (SettingsManager.Instance != null && SettingsManager.Instance.IsSettingsOpen)
+        {
+            return;
+        }
+
         if (IsDead || currentHealth <= 0)
         {
             return;
@@ -324,9 +329,29 @@ public class PlayerController : MonoBehaviour
         // Dynamic Walking Bob & Lean Tilt
         ApplyMovementJuice();
 
-        // 8-directional input via Input.GetAxisRaw("Horizontal") and "Vertical", normalized
-        float horizontal = Input.GetAxisRaw("Horizontal");
-        float vertical = Input.GetAxisRaw("Vertical");
+        // Configurable 8-directional input via SettingsManager movement mode (WASD, Arrows, or Both)
+        float horizontal = 0f;
+        float vertical = 0f;
+        SettingsManager.MovementMode mMode = SettingsManager.Instance != null ? SettingsManager.Instance.CurrentMovementMode : SettingsManager.MovementMode.Both;
+
+        if (mMode == SettingsManager.MovementMode.Both || mMode == SettingsManager.MovementMode.WASDOnly)
+        {
+            if (Input.GetKey(KeyCode.W)) vertical += 1f;
+            if (Input.GetKey(KeyCode.S)) vertical -= 1f;
+            if (Input.GetKey(KeyCode.A)) horizontal -= 1f;
+            if (Input.GetKey(KeyCode.D)) horizontal += 1f;
+        }
+
+        if (mMode == SettingsManager.MovementMode.Both || mMode == SettingsManager.MovementMode.ArrowKeysOnly)
+        {
+            if (Input.GetKey(KeyCode.UpArrow)) vertical += 1f;
+            if (Input.GetKey(KeyCode.DownArrow)) vertical -= 1f;
+            if (Input.GetKey(KeyCode.LeftArrow)) horizontal -= 1f;
+            if (Input.GetKey(KeyCode.RightArrow)) horizontal += 1f;
+        }
+
+        horizontal = Mathf.Clamp(horizontal, -1f, 1f);
+        vertical = Mathf.Clamp(vertical, -1f, 1f);
         moveInput = new Vector2(horizontal, vertical).normalized;
 
         // Update Animator boolean parameter "IsMoving"
