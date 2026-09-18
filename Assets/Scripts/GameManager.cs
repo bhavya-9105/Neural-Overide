@@ -30,6 +30,10 @@ public class GameManager : MonoBehaviour
     public State currentState = State.Starting;
 
     [Header("Difficulty Mode")]
+    private int currentLevelIndex = 0;
+    public int CurrentLevelIndex { get => currentLevelIndex; set => currentLevelIndex = value; }
+    public float enemySpawnRate = 3.0f;
+    public float EnemySpawnRate { get => enemySpawnRate; set => enemySpawnRate = value; }
     public int currentDifficulty = 0; // 0 = Easy (20s), 1 = Normal (50s), 2 = Expert/Hard (90s)
     public float survivalDuration = 20f;
     public float baseEnemySpeedMultiplier = 0.75f;
@@ -304,11 +308,11 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // Normal fresh startup: strictly reset to Level 1 (20s)
+        // Normal fresh startup: strictly reset to LevelIndex 0 (20s)
         if (!PendingDifficultyIndex.HasValue)
         {
-            currentLevel = 1;
-            SetDifficulty(0);
+            currentLevelIndex = 0;
+            ApplyLevel(0);
         }
 
         if (startPanel != null)
@@ -341,44 +345,48 @@ public class GameManager : MonoBehaviour
         ApplyDifficultyUITheme(currentDifficulty);
     }
 
-    public void SetDifficulty(int diff)
+    public void ApplyLevel(int index)
     {
-        currentDifficulty = Mathf.Clamp(diff, 0, 2);
-        currentLevel = currentDifficulty + 1; // Level 1 (Easy: 20s), Level 2 (Normal: 50s), Level 3 (Hard: 90s)
+        currentLevelIndex = Mathf.Clamp(index, 0, 2);
+        currentDifficulty = currentLevelIndex;
+        currentLevel = currentLevelIndex + 1;
 
-        // Enforce Level Timers explicitly per level index:
-        switch (currentLevel)
+        switch (currentLevelIndex)
         {
-            case 1: // Level 1 (Easy): survivalTimer = 20f
-                survivalDuration = 20f;
-                totalSurvivalTime = 20f;
-                survivalTimeRemaining = 20f;
+            case 0: // Easy
+                survivalTimer = 20f;
+                enemySpawnRate = 3.0f;
                 baseEnemySpeedMultiplier = 0.75f;
                 break;
-            case 2: // Level 2 (Normal): survivalTimer = 50f
-                survivalDuration = 50f;
-                totalSurvivalTime = 50f;
-                survivalTimeRemaining = 50f;
+            case 1: // Normal
+                survivalTimer = 50f;
+                enemySpawnRate = 2.0f;
                 baseEnemySpeedMultiplier = 1.0f;
                 break;
-            case 3: // Level 3 (Hard): survivalTimer = 90f
+            case 2: // Expert
             default:
-                survivalDuration = 90f;
-                totalSurvivalTime = 90f;
-                survivalTimeRemaining = 90f;
+                survivalTimer = 90f;
+                enemySpawnRate = 1.2f;
                 baseEnemySpeedMultiplier = 1.35f;
                 break;
         }
 
-        ApplyDifficultyUITheme(currentDifficulty);
-
         WaveSpawner spawner = Object.FindAnyObjectByType<WaveSpawner>(FindObjectsInactive.Include);
         if (spawner != null)
         {
-            spawner.ApplyDifficulty(currentDifficulty);
+            spawner.ApplyDifficulty(currentLevelIndex);
+            spawner.InitialSpawnInterval = enemySpawnRate;
         }
 
-        Debug.Log($"[GameManager] Difficulty selected: {currentDifficulty}, Level: {currentLevel} (Timer: {survivalTimeRemaining}s, SpeedMult: {enemySpeedMultiplier}x)");
+        ApplyDifficultyUITheme(currentLevelIndex);
+        UpdateTimerDisplay();
+    }
+
+    public void SetDifficulty(int diff)
+    {
+        currentLevelIndex = Mathf.Clamp(diff, 0, 2);
+        ApplyLevel(currentLevelIndex);
+        Debug.Log($"[GameManager] Difficulty selected: {currentDifficulty}, Level: {currentLevel} (Timer: {survivalTimeRemaining}s, SpawnRate: {enemySpawnRate}s)");
     }
 
     public void ApplyDifficultyUITheme(Difficulty diff)
@@ -419,6 +427,16 @@ public class GameManager : MonoBehaviour
 
     private void Update()
     {
+        if (SettingsManager.Instance != null && SettingsManager.Instance.IsSettingsOpen)
+        {
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                SettingsManager.Instance.CloseSettings();
+                return;
+            }
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.Escape))
         {
             if (isGameActive)
@@ -556,27 +574,7 @@ public class GameManager : MonoBehaviour
         comboCount = 0;
         comboTimer = 0f;
         currentMultiplier = 1;
-        // Enforce Level Timers explicitly per level index:
-        // Level 1 (Easy): 20s, Level 2 (Normal): 50s, Level 3 (Hard): 90s
-        switch (currentLevel)
-        {
-            case 1:
-                survivalDuration = 20f;
-                totalSurvivalTime = 20f;
-                survivalTimeRemaining = 20f;
-                break;
-            case 2:
-                survivalDuration = 50f;
-                totalSurvivalTime = 50f;
-                survivalTimeRemaining = 50f;
-                break;
-            case 3:
-            default:
-                survivalDuration = 90f;
-                totalSurvivalTime = 90f;
-                survivalTimeRemaining = 90f;
-                break;
-        }
+        ApplyLevel(currentLevelIndex);
 
         SetMainMenuVisibility(false);
 
@@ -681,6 +679,90 @@ public class GameManager : MonoBehaviour
     public void ReturnToMainMenu()
     {
         ExitToMenu();
+    }
+
+    public void OpenSettingsFromStart()
+    {
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.OpenSettingsModal();
+            return;
+        }
+        if (SettingsManager.Instance != null)
+        {
+            SettingsManager.Instance.OpenSettings(startPanel);
+        }
+    }
+
+    public void OpenSettingsFromPause()
+    {
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.OpenSettingsModal();
+            return;
+        }
+        if (SettingsManager.Instance != null)
+        {
+            SettingsManager.Instance.OpenSettings(pausePanel);
+        }
+    }
+
+    public void OpenSettingsFromVictory()
+    {
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.OpenSettingsModal();
+            return;
+        }
+        if (SettingsManager.Instance != null)
+        {
+            SettingsManager.Instance.OpenSettings(victoryPanel);
+        }
+    }
+
+    public void CloseSettings()
+    {
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.CloseSettingsModal(true);
+            return;
+        }
+        if (SettingsManager.Instance != null)
+        {
+            SettingsManager.Instance.CloseSettings();
+        }
+    }
+
+    public void ToggleEyeFilter()
+    {
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.ToggleEyeFilter();
+        }
+    }
+
+    public void ToggleAudio()
+    {
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.ToggleAudio();
+        }
+        else
+        {
+            AudioListener.volume = (AudioListener.volume > 0f) ? 0f : 1.0f;
+        }
+    }
+
+    public void ShowToast(string message, float duration = 2.0f)
+    {
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.ShowToast(message, duration);
+        }
+        else
+        {
+            Debug.Log($"[Toast] {message}");
+        }
     }
 
     /// <summary>
@@ -830,7 +912,7 @@ public class GameManager : MonoBehaviour
 
         if (scoreText != null)
         {
-            scoreText.text = "SCORE: " + currentScore;
+            scoreText.text = "NODES PURGED: " + currentScore;
         }
 
         if (comboText != null)
@@ -899,7 +981,7 @@ public class GameManager : MonoBehaviour
 
         if (gameOverScoreText != null)
         {
-            gameOverScoreText.text = $"SCORE: {currentScore}";
+            gameOverScoreText.text = $"NODES PURGED: {currentScore}";
         }
 
         if (gameOverStatsText != null)
@@ -953,7 +1035,7 @@ public class GameManager : MonoBehaviour
 
         if (victoryScoreText != null)
         {
-            victoryScoreText.text = $"SCORE: {currentScore}";
+            victoryScoreText.text = $"NODES PURGED: {currentScore}";
         }
 
         if (victoryStatsText != null)
@@ -984,7 +1066,7 @@ public class GameManager : MonoBehaviour
             if (nextLevelBtn != null) nextLevelBtn.SetActive(true);
             if (nextLevelButtonText != null)
             {
-                nextLevelButtonText.text = "ADVANCE TO NORMAL PROTOCOL (50s)";
+                nextLevelButtonText.text = "ADVANCE TO NEXT LEVEL";
             }
         }
         else if (currentLevel == 2)
@@ -992,7 +1074,7 @@ public class GameManager : MonoBehaviour
             if (nextLevelBtn != null) nextLevelBtn.SetActive(true);
             if (nextLevelButtonText != null)
             {
-                nextLevelButtonText.text = "ADVANCE TO EXPERT PROTOCOL (90s)";
+                nextLevelButtonText.text = "ADVANCE TO NEXT LEVEL";
             }
         }
         else // currentLevel >= 3
@@ -1038,51 +1120,15 @@ public class GameManager : MonoBehaviour
             victoryPanel.SetActive(false);
         }
 
-        // Advance level linearly: Level 1 -> Level 2 -> Level 3
-        currentLevel++;
-        if (currentLevel > 3)
+        // Advance level linearly: Level 0 -> Level 1 -> Level 2
+        currentLevelIndex++;
+        if (currentLevelIndex > 2)
         {
-            currentLevel = 3;
+            currentLevelIndex = 2;
         }
 
-        currentDifficulty = Mathf.Clamp(currentLevel - 1, 0, 2);
+        ApplyLevel(currentLevelIndex);
 
-        // Enforce Level Timers explicitly per level index:
-        // Level 1 (Easy): survivalTimer = 20f;
-        // Level 2 (Normal): survivalTimer = 50f;
-        // Level 3 (Hard): survivalTimer = 90f;
-        switch (currentLevel)
-        {
-            case 1:
-                survivalDuration = 20f;
-                totalSurvivalTime = 20f;
-                survivalTimeRemaining = 20f;
-                baseEnemySpeedMultiplier = 0.75f;
-                break;
-            case 2:
-                survivalDuration = 50f;
-                totalSurvivalTime = 50f;
-                survivalTimeRemaining = 50f;
-                baseEnemySpeedMultiplier = 1.0f;
-                break;
-            case 3:
-            default:
-                survivalDuration = 90f;
-                totalSurvivalTime = 90f;
-                survivalTimeRemaining = 90f;
-                baseEnemySpeedMultiplier = 1.35f;
-                break;
-        }
-
-        ApplyDifficultyUITheme(currentDifficulty);
-
-        WaveSpawner spawner = Object.FindAnyObjectByType<WaveSpawner>(FindObjectsInactive.Include);
-        if (spawner != null)
-        {
-            spawner.ApplyDifficulty(currentDifficulty);
-        }
-
-        // Restart/re-initialize the round with the updated difficulty parameters:
         // Reset player position and health (5/5).
         PlayerController player = Object.FindAnyObjectByType<PlayerController>(FindObjectsInactive.Include);
         if (player != null)
@@ -1104,9 +1150,17 @@ public class GameManager : MonoBehaviour
             tether.ReleaseMinion();
         }
 
+        // Restart wave loops
+        WaveSpawner spawner = Object.FindAnyObjectByType<WaveSpawner>(FindObjectsInactive.Include);
+        if (spawner != null)
+        {
+            spawner.ResetSpawner();
+            spawner.InitialSpawnInterval = enemySpawnRate;
+        }
+
         StartGame();
 
-        Debug.Log($"[GameManager] NextLevel: Advanced linearly to Level {currentLevel}, Difficulty {currentDifficulty} (Timer: {survivalTimeRemaining}s).");
+        Debug.Log($"[GameManager] NextLevel: Advanced linearly to LevelIndex {currentLevelIndex}, Level {currentLevel} (Timer: {survivalTimeRemaining}s, SpawnRate: {enemySpawnRate}s).");
     }
 
     /// <summary>
@@ -1125,34 +1179,75 @@ public class GameManager : MonoBehaviour
         RestartGame();
     }
 
-    public void RestartGame()
+    public void ResetGame()
     {
+        currentLevelIndex = 0;
+        ApplyLevel(0);
+
         ClearAllCombatEntities();
         NeuralTether tether = Object.FindAnyObjectByType<NeuralTether>(FindObjectsInactive.Include);
         if (tether != null)
         {
             tether.ReleaseMinion();
         }
-        SetDifficulty(currentDifficulty);
-        switch (currentLevel)
+
+        PlayerController player = Object.FindAnyObjectByType<PlayerController>(FindObjectsInactive.Include);
+        if (player != null)
         {
-            case 1:
-                survivalDuration = 20f;
-                totalSurvivalTime = 20f;
-                survivalTimeRemaining = 20f;
-                break;
-            case 2:
-                survivalDuration = 50f;
-                totalSurvivalTime = 50f;
-                survivalTimeRemaining = 50f;
-                break;
-            case 3:
-            default:
-                survivalDuration = 90f;
-                totalSurvivalTime = 90f;
-                survivalTimeRemaining = 90f;
-                break;
+            player.ResetPlayerState();
+            player.currentHealth = 5;
         }
+        if (healthBarUI != null)
+        {
+            healthBarUI.SetHealth(5, 5);
+        }
+
+        WaveSpawner spawner = Object.FindAnyObjectByType<WaveSpawner>(FindObjectsInactive.Include);
+        if (spawner != null)
+        {
+            spawner.ResetSpawner();
+            spawner.InitialSpawnInterval = enemySpawnRate;
+        }
+
+        StartGame();
+
+        Debug.Log($"[GameManager] ResetGame: Reset to LevelIndex 0, Level 1 (Timer: {survivalTimeRemaining}s).");
+    }
+
+    public void StartNewGame()
+    {
+        ResetGame();
+    }
+
+    public void RestartGame()
+    {
+        ApplyLevel(currentLevelIndex);
+
+        ClearAllCombatEntities();
+        NeuralTether tether = Object.FindAnyObjectByType<NeuralTether>(FindObjectsInactive.Include);
+        if (tether != null)
+        {
+            tether.ReleaseMinion();
+        }
+
+        PlayerController player = Object.FindAnyObjectByType<PlayerController>(FindObjectsInactive.Include);
+        if (player != null)
+        {
+            player.ResetPlayerState();
+            player.currentHealth = 5;
+        }
+        if (healthBarUI != null)
+        {
+            healthBarUI.SetHealth(5, 5);
+        }
+
+        WaveSpawner spawner = Object.FindAnyObjectByType<WaveSpawner>(FindObjectsInactive.Include);
+        if (spawner != null)
+        {
+            spawner.ResetSpawner();
+            spawner.InitialSpawnInterval = enemySpawnRate;
+        }
+
         StartGame();
     }
 
@@ -1166,11 +1261,33 @@ public class GameManager : MonoBehaviour
     private void UpdateScoreDisplay()
     {
         if (scoreText == null) return;
-        scoreText.text = $"SCORE: {currentScore}";
+        scoreText.text = $"NODES PURGED: {currentScore}";
     }
 
     public void BindButtons()
     {
+        GameObject startBtnObj = GameObject.Find("Btn_Start");
+        if (startBtnObj != null)
+        {
+            Button sBtn = startBtnObj.GetComponent<Button>();
+            if (sBtn != null)
+            {
+                sBtn.onClick.RemoveAllListeners();
+                sBtn.onClick.AddListener(ResetGame);
+            }
+        }
+
+        GameObject restartBtnObj = GameObject.Find("Btn_Restart");
+        if (restartBtnObj != null)
+        {
+            Button rBtn = restartBtnObj.GetComponent<Button>();
+            if (rBtn != null)
+            {
+                rBtn.onClick.RemoveAllListeners();
+                rBtn.onClick.AddListener(ResetGame);
+            }
+        }
+
         if (easyButton == null)
         {
             GameObject b = GameObject.Find("Btn_Easy");
@@ -1321,7 +1438,7 @@ public class GameManager : MonoBehaviour
         }
         if (startPanel == null)
         {
-            GameObject go = GameObject.Find("StartPanel");
+            GameObject go = GameObject.Find("StartMenuPanel") ?? GameObject.Find("StartPanel");
             if (go != null) startPanel = go;
         }
         if (gameOverPanel == null)
