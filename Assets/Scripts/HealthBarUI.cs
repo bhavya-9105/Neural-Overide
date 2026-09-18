@@ -29,7 +29,6 @@ public class HealthBarUI : MonoBehaviour
         FindPlayer();
         CacheComponents();
         EnsureWhiteSprites();
-        ApplyDefaultDarkTealTheme();
     }
 
     private int lastHp = -1;
@@ -40,22 +39,7 @@ public class HealthBarUI : MonoBehaviour
         FindPlayer();
         CacheComponents();
         EnsureWhiteSprites();
-        ApplyDefaultDarkTealTheme();
         UpdateUI(true);
-    }
-
-    private void ApplyDefaultDarkTealTheme()
-    {
-        if (fillImage != null && (fillImage.color == Color.white || fillImage.color == new Color(34f / 255f, 197f / 255f, 94f / 255f, 1f)))
-        {
-            ColorUtility.TryParseHtmlString("#14B8A6", out Color tealFill);
-            fillImage.color = tealFill;
-        }
-        if (backgroundImage != null && (backgroundImage.color == Color.white || backgroundImage.color == new Color(30f / 255f, 41f / 255f, 59f / 255f, 1f)))
-        {
-            ColorUtility.TryParseHtmlString("#061424", out Color darkBg);
-            backgroundImage.color = darkBg;
-        }
     }
 
     private void Update()

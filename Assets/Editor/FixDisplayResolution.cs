@@ -250,7 +250,7 @@ namespace GameJam.Editor
                 }
 
                 tmp.enableAutoSizing = false;
-                tmp.textWrappingMode = TextWrappingModes.NoWrap;
+                tmp.enableWordWrapping = false;
                 tmp.overflowMode = TextOverflowModes.Overflow;
 
                 string name = tmp.gameObject.name;

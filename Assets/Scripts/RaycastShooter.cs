@@ -132,22 +132,13 @@ public class RaycastShooter : MonoBehaviour
         bool isGameplay = (GameManager.Instance == null || (GameManager.Instance.isGameActive && !GameManager.Instance.isPaused)) && Time.timeScale > 0f;
         if (!isGameplay) return;
 
-        if (SettingsManager.Instance != null && SettingsManager.Instance.IsSettingsOpen)
-        {
-            return;
-        }
-
-        int primaryBtn = SettingsManager.Instance != null ? SettingsManager.Instance.PrimaryMouseButton : 0;
-        int secondaryBtn = SettingsManager.Instance != null ? SettingsManager.Instance.SecondaryMouseButton : 1;
-        int specialBtn = SettingsManager.Instance != null ? SettingsManager.Instance.SpecialMouseButton : 2;
-
-        if ((Input.GetMouseButton(primaryBtn) || Input.GetMouseButtonDown(primaryBtn)) && Time.time >= nextFireTime)
+        if ((Input.GetMouseButton(0) || Input.GetMouseButtonDown(0)) && Time.time >= nextFireTime)
         {
             nextFireTime = Time.time + fireRate;
             FirePulse();
         }
 
-        if (Input.GetMouseButtonDown(secondaryBtn))
+        if (Input.GetMouseButtonDown(1))
         {
             NeuralTether tether = GetComponent<NeuralTether>();
             if (tether != null)
@@ -158,14 +149,6 @@ public class RaycastShooter : MonoBehaviour
             if (emp != null && emp.IsReady)
             {
                 emp.TriggerEMP();
-            }
-        }
-
-        if (Input.GetMouseButtonDown(specialBtn))
-        {
-            if (SettingsManager.Instance != null)
-            {
-                SettingsManager.Instance.ToggleTacticalZoom();
             }
         }
     }

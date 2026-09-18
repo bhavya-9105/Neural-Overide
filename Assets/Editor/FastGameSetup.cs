@@ -23,14 +23,12 @@ namespace GameJam.Editor
 
         private static void AutoRunOnCompile()
         {
-            if (!SessionState.GetBool("FastGameSetup_UIRebuild_Done_v20", false))
+            if (!SessionState.GetBool("FastGameSetup_UIRebuild_Done_v18", false))
             {
-                SessionState.SetBool("FastGameSetup_UIRebuild_Done_v20", true);
+                SessionState.SetBool("FastGameSetup_UIRebuild_Done_v18", true);
                 SetupSceneAndSprites();
             }
         }
-
-        public static void SetupScene() => SetupSceneAndSprites();
 
         [MenuItem("GameJam/Setup Scene & Sprites")]
         public static void SetupSceneAndSprites()
@@ -390,8 +388,8 @@ namespace GameJam.Editor
 
             cam.orthographic = true;
             cam.clearFlags = CameraClearFlags.SolidColor;
-            ColorUtility.TryParseHtmlString("#071322", out Color deepDarkNavy);
-            cam.backgroundColor = deepDarkNavy;
+            ColorUtility.TryParseHtmlString("#161922", out Color slateNavy);
+            cam.backgroundColor = slateNavy;
             cam.orthographicSize = 8f;
 
             // Destroy any PixelPerfectCamera component
@@ -810,331 +808,6 @@ namespace GameJam.Editor
             }
 
             return AssetDatabase.LoadAssetAtPath<Sprite>(reticlePath);
-        }
-
-        private static void SaveTextureAndImportUISprite(Texture2D tex, string assetPath, Vector4? border = null)
-        {
-            byte[] pngBytes = tex.EncodeToPNG();
-            string fullPath = Path.Combine(Application.dataPath, assetPath.Substring("Assets/".Length));
-            string dir = Path.GetDirectoryName(fullPath);
-            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllBytes(fullPath, pngBytes);
-            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
-
-            TextureImporter importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
-            if (importer != null)
-            {
-                importer.textureType = TextureImporterType.Sprite;
-                importer.spritePixelsPerUnit = 100f;
-                importer.filterMode = FilterMode.Bilinear;
-                importer.textureCompression = TextureImporterCompression.Uncompressed;
-                importer.wrapMode = TextureWrapMode.Clamp;
-                if (border.HasValue)
-                {
-                    importer.spriteBorder = border.Value;
-                }
-                importer.SaveAndReimport();
-            }
-        }
-
-        private static Sprite CreateRoundedRectSprite(string assetPath, int width, int height, Color fillColor, Color borderColor, float borderWidth = 1.5f, float cornerRadius = 8f, bool verticalGradient = false, Color? gradientTopColor = null)
-        {
-            Sprite existing = AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
-            if (existing != null) return existing;
-
-            Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
-            tex.filterMode = FilterMode.Bilinear;
-            tex.wrapMode = TextureWrapMode.Clamp;
-            Color[] pixels = new Color[width * height];
-
-            for (int y = 0; y < height; y++)
-            {
-                float tY = (float)y / (height - 1);
-                Color currentFill = verticalGradient && gradientTopColor.HasValue
-                    ? Color.Lerp(fillColor, gradientTopColor.Value, tY)
-                    : fillColor;
-
-                for (int x = 0; x < width; x++)
-                {
-                    float dx = Mathf.Max(0f, Mathf.Max(cornerRadius - x, x - (width - 1 - cornerRadius)));
-                    float dy = Mathf.Max(0f, Mathf.Max(cornerRadius - y, y - (height - 1 - cornerRadius)));
-                    float dist = Mathf.Sqrt(dx * dx + dy * dy);
-
-                    if (dist > cornerRadius + 0.5f)
-                    {
-                        pixels[y * width + x] = Color.clear;
-                    }
-                    else if (dist > cornerRadius - borderWidth)
-                    {
-                        float alpha = Mathf.Clamp01(cornerRadius + 0.5f - dist);
-                        pixels[y * width + x] = new Color(borderColor.r, borderColor.g, borderColor.b, borderColor.a * alpha);
-                    }
-                    else if (x < borderWidth || x >= width - borderWidth || y < borderWidth || y >= height - borderWidth)
-                    {
-                        pixels[y * width + x] = borderColor;
-                    }
-                    else
-                    {
-                        pixels[y * width + x] = currentFill;
-                    }
-                }
-            }
-
-            tex.SetPixels(pixels);
-            tex.Apply();
-
-            SaveTextureAndImportUISprite(tex, assetPath, new Vector4(12, 12, 12, 12));
-            AssetDatabase.Refresh();
-            return AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
-        }
-
-        private static Sprite GetOrCreateCyberButtonSprite()
-        {
-            string path = "Assets/UI/CyberButton_Cyan.png";
-            Color darkFill = new Color(15f / 255f, 20f / 255f, 29f / 255f, 0.95f); // #0f141d
-            Color cyanBorder = new Color(0f / 255f, 240f / 255f, 255f / 255f, 1f); // #00f0ff Electric Cyan
-            return CreateRoundedRectSprite(path, 64, 64, darkFill, cyanBorder, 2f, 4f);
-        }
-
-        private static Sprite GetOrCreateGlitchCrimsonButtonSprite()
-        {
-            string path = "Assets/UI/CyberButton_Crimson.png";
-            Color darkFill = new Color(15f / 255f, 20f / 255f, 29f / 255f, 0.95f); // #0f141d
-            Color crimsonBorder = new Color(255f / 255f, 0f / 255f, 85f / 255f, 1f); // #ff0055 Glitch Crimson
-            return CreateRoundedRectSprite(path, 64, 64, darkFill, crimsonBorder, 2f, 4f);
-        }
-
-        private static Sprite GetOrCreateCyberPanelSprite()
-        {
-            string path = "Assets/UI/CyberPanel_Dark.png";
-            Color darkSlateFill = new Color(15f / 255f, 20f / 255f, 29f / 255f, 0.90f); // #0f141d 90% opacity
-            Color borderSlate = new Color(30f / 255f, 41f / 255f, 59f / 255f, 1f); // #1e293b 1px border
-            return CreateRoundedRectSprite(path, 64, 64, darkSlateFill, borderSlate, 1.5f, 6f);
-        }
-
-        private static Sprite GetOrCreateCyberCardRowSprite()
-        {
-            string path = "Assets/UI/CyberCardRow_Dark.png";
-            Color darkFill = new Color(15f / 255f, 20f / 255f, 29f / 255f, 0.85f);
-            Color borderSlate = new Color(30f / 255f, 41f / 255f, 59f / 255f, 1f);
-            return CreateRoundedRectSprite(path, 64, 64, darkFill, borderSlate, 1.2f, 4f);
-        }
-
-        private static Sprite GetOrCreateCyberTopBarSprite()
-        {
-            string path = "Assets/UI/CyberTopBar_Dark.png";
-            Color topBarFill = new Color(15f / 255f, 20f / 255f, 29f / 255f, 0.80f); // #0f141d 80% opacity
-            Color borderSlate = new Color(30f / 255f, 41f / 255f, 59f / 255f, 1f); // #1e293b bottom border
-            return CreateRoundedRectSprite(path, 64, 64, topBarFill, borderSlate, 1f, 0f);
-        }
-
-        private static Sprite GetOrCreatePrimaryButtonSprite()
-        {
-            return GetOrCreateCyberButtonSprite();
-        }
-
-        private static Sprite GetOrCreateSecondaryButtonSprite()
-        {
-            return GetOrCreateCyberButtonSprite();
-        }
-
-        private static Sprite GetOrCreatePanelCardSprite()
-        {
-            return GetOrCreateCyberPanelSprite();
-        }
-
-        private static Sprite GetOrCreateCardRowSprite()
-        {
-            return GetOrCreateCyberCardRowSprite();
-        }
-
-        private static Sprite GetOrCreateNeuralEmblemSprite()
-        {
-            string assetPath = "Assets/UI/NeuralEmblem.png";
-            Sprite sp = AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
-            if (sp != null) return sp;
-
-            int size = 64;
-            Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            tex.filterMode = FilterMode.Bilinear;
-            tex.wrapMode = TextureWrapMode.Clamp;
-            Color[] pixels = new Color[size * size];
-
-            Vector2 center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
-            Color bgCard = new Color(10f / 255f, 30f / 255f, 53f / 255f, 0.95f); // #0A1E35
-            Color tealBorder = new Color(13f / 255f, 148f / 255f, 136f / 255f, 1f); // #0D9488
-            Color cyanNode = new Color(56f / 255f, 189f / 255f, 248f / 255f, 1f); // #38BDF8
-            Color lightTeal = new Color(153f / 255f, 246f / 255f, 228f / 255f, 1f); // #99F6E4
-            Color goldCore = new Color(254f / 255f, 240f / 255f, 138f / 255f, 1f); // #FEF08A
-            Color accentTeal = new Color(94f / 255f, 234f / 255f, 212f / 255f, 1f); // #5EEAD4
-
-            float cornerRadius = 10f;
-            float borderWidth = 2f;
-
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    float dx = Mathf.Max(0f, Mathf.Max(cornerRadius - x, x - (size - 1 - cornerRadius)));
-                    float dy = Mathf.Max(0f, Mathf.Max(cornerRadius - y, y - (size - 1 - cornerRadius)));
-                    float distCorner = Mathf.Sqrt(dx * dx + dy * dy);
-
-                    if (distCorner > cornerRadius + 0.5f)
-                    {
-                        pixels[y * size + x] = Color.clear;
-                        continue;
-                    }
-
-                    Color c = bgCard;
-                    if (distCorner > cornerRadius - borderWidth || x < borderWidth || x >= size - borderWidth || y < borderWidth || y >= size - borderWidth)
-                    {
-                        c = tealBorder;
-                    }
-
-                    float relX = Mathf.Abs(x - center.x);
-                    float relY = Mathf.Abs(y - center.y);
-                    float manhattan = relX + relY;
-                    float euclidean = Mathf.Sqrt(relX * relX + relY * relY);
-
-                    if ((relX <= 1.2f && relY <= 18f && relY >= 6f) || (relY <= 1.2f && relX <= 18f && relX >= 6f))
-                    {
-                        c = accentTeal;
-                    }
-                    if ((Mathf.Abs(relY - 18f) <= 2.2f && relX <= 2.2f) || (Mathf.Abs(relX - 18f) <= 2.2f && relY <= 2.2f))
-                    {
-                        c = lightTeal;
-                    }
-                    if (Mathf.Abs(manhattan - 13f) <= 1.5f)
-                    {
-                        c = cyanNode;
-                    }
-                    if (manhattan <= 8f)
-                    {
-                        c = Color.Lerp(cyanNode, lightTeal, (8f - manhattan) / 8f);
-                    }
-                    if (euclidean <= 3.2f)
-                    {
-                        c = goldCore;
-                    }
-
-                    pixels[y * size + x] = c;
-                }
-            }
-
-            tex.SetPixels(pixels);
-            tex.Apply();
-
-            SaveTextureAndImportUISprite(tex, assetPath);
-            AssetDatabase.Refresh();
-            return AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
-        }
-
-        private static Button CreateCyberButton(
-            Transform parent,
-            string btnName,
-            Vector2 anchoredPos,
-            Vector2 size,
-            string text,
-            float fontSize = 20f,
-            TMP_FontAsset fontAsset = null,
-            bool isCrimson = false)
-        {
-            if (fontAsset == null) fontAsset = GetOrCreateDefaultTMPFont();
-
-            GameObject btnObj = GetOrRecreateChild(parent, btnName);
-            RectTransform btnRect = btnObj.GetComponent<RectTransform>();
-            btnRect.anchorMin = new Vector2(0.5f, 0.5f);
-            btnRect.anchorMax = new Vector2(0.5f, 0.5f);
-            btnRect.pivot = new Vector2(0.5f, 0.5f);
-            btnRect.anchoredPosition = anchoredPos;
-            btnRect.sizeDelta = size;
-            btnRect.localScale = Vector3.one;
-
-            Image btnImg = btnObj.GetComponent<Image>() ?? btnObj.AddComponent<Image>();
-            btnImg.sprite = isCrimson ? GetOrCreateGlitchCrimsonButtonSprite() : GetOrCreateCyberButtonSprite();
-            btnImg.type = Image.Type.Sliced;
-            btnImg.color = Color.white;
-
-            Button btn = btnObj.GetComponent<Button>() ?? btnObj.AddComponent<Button>();
-            btn.transition = Selectable.Transition.ColorTint;
-            btn.targetGraphic = btnImg;
-
-            ColorBlock cb = btn.colors;
-            cb.normalColor = Color.white;
-            cb.highlightedColor = isCrimson ? new Color(1f, 0.45f, 0.55f, 1f) : ColorGlowHighlight; // #38bdf8
-            cb.selectedColor = isCrimson ? new Color(1f, 0.45f, 0.55f, 1f) : ColorGlowHighlight;
-            cb.pressedColor = new Color(0.7f, 0.7f, 0.7f, 1f);
-            cb.disabledColor = new Color(0.25f, 0.25f, 0.25f, 0.5f);
-            cb.colorMultiplier = 1f;
-            btn.colors = cb;
-
-            // Attach smooth hover scale effect (Vector3 scale 1.05x on pointer enter/select)
-            UIHoverScaleEffect hoverEffect = btnObj.GetComponent<UIHoverScaleEffect>() ?? btnObj.AddComponent<UIHoverScaleEffect>();
-
-            LayoutElement le = btnObj.GetComponent<LayoutElement>() ?? btnObj.AddComponent<LayoutElement>();
-            le.minWidth = size.x;
-            le.minHeight = size.y;
-            le.preferredWidth = size.x;
-            le.preferredHeight = size.y;
-
-            ContentSizeFitter btnCsf = btnObj.GetComponent<ContentSizeFitter>();
-            if (btnCsf != null) Object.DestroyImmediate(btnCsf);
-
-            GameObject labelObj = GetOrRecreateChild(btnObj.transform, "Text");
-            RectTransform labelRect = labelObj.GetComponent<RectTransform>();
-            labelRect.anchorMin = Vector2.zero;
-            labelRect.anchorMax = Vector2.one;
-            labelRect.offsetMin = Vector2.zero;
-            labelRect.offsetMax = Vector2.zero;
-            labelRect.sizeDelta = size;
-            labelRect.localScale = Vector3.one;
-
-            ContentSizeFitter labelCsf = labelObj.GetComponent<ContentSizeFitter>();
-            if (labelCsf != null) Object.DestroyImmediate(labelCsf);
-
-            TextMeshProUGUI labelTmp = labelObj.GetComponent<TextMeshProUGUI>() ?? labelObj.AddComponent<TextMeshProUGUI>();
-            labelTmp.text = text;
-            labelTmp.textWrappingMode = TextWrappingModes.NoWrap;
-            labelTmp.overflowMode = TextOverflowModes.Overflow;
-            ConfigureTMPText(labelTmp, fontAsset, fontSize: fontSize, alignment: TextAlignmentOptions.Center, color: ColorCrispWhite);
-
-            return btn;
-        }
-
-        private static Button CreateGlitchCrimsonButton(
-            Transform parent,
-            string btnName,
-            Vector2 anchoredPos,
-            Vector2 size,
-            string text,
-            float fontSize = 20f,
-            TMP_FontAsset fontAsset = null)
-        {
-            return CreateCyberButton(parent, btnName, anchoredPos, size, text, fontSize, fontAsset, true);
-        }
-
-        private static Button CreatePrimaryButton(
-            Transform parent,
-            string btnName,
-            Vector2 anchoredPos,
-            Vector2 size,
-            string text,
-            float fontSize = 22f,
-            TMP_FontAsset fontAsset = null)
-        {
-            return CreateCyberButton(parent, btnName, anchoredPos, size, text, fontSize, fontAsset, false);
-        }
-
-        private static Button CreateSecondaryButton(
-            Transform parent,
-            string btnName,
-            Vector2 anchoredPos,
-            Vector2 size,
-            string text,
-            float fontSize = 15f,
-            TMP_FontAsset fontAsset = null)
-        {
-            return CreateCyberButton(parent, btnName, anchoredPos, size, text, fontSize, fontAsset, false);
         }
 
         private static GameObject SetupPlayer(string folderPath, int enemyLayerIndex)
@@ -1712,62 +1385,26 @@ namespace GameJam.Editor
             }
         }
 
-        // ==================== CYBER ACTION SURVIVAL UI PALETTE & CONFIG ====================
-        private static readonly Color ColorPanelBg = new Color(15f / 255f, 20f / 255f, 29f / 255f, 0.90f); // #0f141d with 90% opacity
-        private static readonly Color ColorPanelBorder = new Color(30f / 255f, 41f / 255f, 59f / 255f, 1f); // #1e293b 1px border
-        private static readonly Color ColorElectricCyan = new Color(0f / 255f, 240f / 255f, 255f / 255f, 1f); // #00f0ff Electric Cyan
-        private static readonly Color ColorGlowHighlight = new Color(56f / 255f, 189f / 255f, 248f / 255f, 1f); // #38bdf8 Glow / Hover Highlight
-        private static readonly Color ColorGlitchCrimson = new Color(255f / 255f, 0f / 255f, 85f / 255f, 1f); // #ff0055 Glitch Crimson
-        private static readonly Color ColorCrispWhite = new Color(1f, 1f, 1f, 1f); // #ffffff Crisp White
-        private static readonly Color ColorMutedSlate = new Color(148f / 255f, 163f / 255f, 184f / 255f, 1f); // #94a3b8 Muted Slate
-        private static readonly Color ColorTimerYellow = new Color(255f / 255f, 230f / 255f, 0f / 255f, 1f); // #ffe600 Timer Yellow
-        private static readonly Color ColorDarkBackdrop = new Color(0f, 0f, 0f, 0.80f); // #000000 with 0.8 alpha
-        private static readonly Color ColorTopBarBg = new Color(15f / 255f, 20f / 255f, 29f / 255f, 0.80f); // #0f141d with 80% opacity
-
-        // Compatibility aliases
-        private static readonly Color ColorDeepDarkNavy = ColorPanelBg;
-        private static readonly Color ColorDeepDarkNavyDarker = ColorPanelBg;
-        private static readonly Color ColorSecondaryPanelBg = ColorPanelBg;
-        private static readonly Color ColorCardRowBg = ColorPanelBg;
-        private static readonly Color ColorModalBackdrop = ColorDarkBackdrop;
-        private static readonly Color ColorPrimaryTeal = ColorElectricCyan;
-        private static readonly Color ColorPrimaryTealBright = ColorGlowHighlight;
-        private static readonly Color ColorHighlightYellow = ColorTimerYellow;
-        private static readonly Color ColorSecondaryBtnBg = ColorPanelBg;
-        private static readonly Color ColorSecondaryBorderAccent = ColorPanelBorder;
-        private static readonly Color ColorTitleWhite = ColorCrispWhite;
-        private static readonly Color ColorSubtitleCyan = ColorElectricCyan;
-        private static readonly Color ColorTaglineTeal = ColorMutedSlate;
-        private static readonly Color ColorBadgeTeal = ColorElectricCyan;
-        private static readonly Color ColorToastBg = ColorPanelBg;
-        private static readonly Color ColorHealthBarFillTeal = ColorElectricCyan;
-        private static readonly Color ColorHealthBarBgDark = new Color(10f / 255f, 15f / 255f, 22f / 255f, 1f);
-        private static readonly Color ColorRadarBgDark = ColorPanelBg;
-        private static readonly Color ColorRadarOutlineCyan = ColorElectricCyan;
-        private static readonly Color ColorCriticalRed = ColorGlitchCrimson;
-        private static readonly Color ColorMainPanelBg = ColorPanelBg;
-        private static readonly Color ColorVictoryPanelBg = ColorPanelBg;
-        private static readonly Color ColorPausePanelBg = ColorPanelBg;
-        private static readonly Color ColorPauseTitleGold = ColorTimerYellow;
-        private static readonly Color ColorButtonCharcoal = ColorPanelBg;
-        private static readonly Color ColorButtonHoverHighlight = ColorGlowHighlight;
-        private static readonly Color ColorButtonActiveSelected = ColorElectricCyan;
-        private static readonly Color ColorStartBtnEmerald = ColorElectricCyan;
-        private static readonly Color ColorStartBtnHover = ColorGlowHighlight;
-        private static readonly Color ColorHealthBarBg = ColorHealthBarBgDark;
-        private static readonly Color ColorHealthBarFill = ColorElectricCyan;
-        private static readonly Color ColorTimerGold = ColorTimerYellow;
-        private static readonly Color ColorSlateMuted = ColorMutedSlate;
-        private static readonly Color ColorDarkNavyBg = ColorPanelBg;
-        private static readonly Color ColorTaglineLightTeal = ColorMutedSlate;
+        // ==================== MODERN CRISP VECTOR UI PALETTE & CONFIG ====================
+        private static readonly Color ColorMainPanelBg = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.95f); // #0F172A (95% opacity)
+        private static readonly Color ColorVictoryPanelBg = new Color(0.04f, 0.12f, 0.08f, 0.95f);
+        private static readonly Color ColorPausePanelBg = new Color(0.06f, 0.08f, 0.12f, 0.92f);
+        private static readonly Color ColorPauseTitleGold = new Color(1f, 0.85f, 0.1f, 1f);
+        private static readonly Color ColorButtonCharcoal = new Color(30f / 255f, 41f / 255f, 59f / 255f, 1f); // #1E293B
+        private static readonly Color ColorButtonHoverHighlight = new Color(56f / 255f, 189f / 255f, 248f / 255f, 1f); // #38BDF8 Sky Blue hover
+        private static readonly Color ColorButtonActiveSelected = new Color(6f / 255f, 182f / 255f, 212f / 255f, 1f); // #06B6D4 Electric Cyan
+        private static readonly Color ColorStartBtnEmerald = new Color(16f / 255f, 185f / 255f, 129f / 255f, 1f); // #10B981 Vivid Emerald Green
+        private static readonly Color ColorStartBtnHover = new Color(52f / 255f, 211f / 255f, 153f / 255f, 1f); // #34D399 Bright Emerald Hover
+        private static readonly Color ColorHealthBarBg = new Color(30f / 255f, 41f / 255f, 59f / 255f, 1f); // #1E293B Solid Dark Slate
+        private static readonly Color ColorHealthBarFill = new Color(34f / 255f, 197f / 255f, 94f / 255f, 1f); // #22C55E Vivid Lime Green
+        private static readonly Color ColorTimerGold = new Color(251f / 255f, 191f / 255f, 36f / 255f, 1f); // #FBBF24 Bright Gold
+        private static readonly Color ColorElectricCyan = new Color(6f / 255f, 182f / 255f, 212f / 255f, 1f); // #06B6D4 Electric Cyan
+        private static readonly Color ColorSlateMuted = new Color(148f / 255f, 163f / 255f, 184f / 255f, 1f); // #94A3B8 Slate Gray
+        private static readonly Color ColorCriticalRed = new Color(239f / 255f, 68f / 255f, 68f / 255f, 1f); // #EF4444 Crimson
 
         private static TMP_FontAsset GetOrCreateDefaultTMPFont()
         {
-            TMP_FontAsset fontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/TextMesh Pro/Resources/Fonts & Materials/SpaceGrotesk SDF.asset");
-            if (fontAsset == null)
-            {
-                fontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF.asset");
-            }
+            TMP_FontAsset fontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF.asset");
             if (fontAsset == null)
             {
                 fontAsset = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
@@ -1813,8 +1450,7 @@ namespace GameJam.Editor
             TMP_FontAsset fontAsset,
             float fontSize,
             TextAlignmentOptions alignment = TextAlignmentOptions.Center,
-            Color? color = null,
-            float characterSpacing = 0f)
+            Color? color = null)
         {
             if (tmp == null) return;
             if (fontAsset != null) tmp.font = fontAsset;
@@ -1825,14 +1461,13 @@ namespace GameJam.Editor
                 Object.DestroyImmediate(csf);
             }
 
-            tmp.textWrappingMode = TextWrappingModes.NoWrap;
+            tmp.enableWordWrapping = false;
             tmp.overflowMode = TextOverflowModes.Overflow;
             tmp.enableAutoSizing = false;
             tmp.fontSize = fontSize;
             tmp.alignment = alignment;
             if (color.HasValue) tmp.color = color.Value;
             tmp.fontStyle = FontStyles.Bold;
-            tmp.characterSpacing = characterSpacing;
             tmp.raycastTarget = false;
             tmp.rectTransform.localScale = Vector3.one;
 
@@ -1945,45 +1580,68 @@ namespace GameJam.Editor
             GameObject strayMiniMap = GameObject.Find("MiniMap_Root");
             if (strayMiniMap != null) Object.DestroyImmediate(strayMiniMap);
 
-            // --- 1. TopBar_Container (Anchored across the top of HUDPanel: #0f141d at 80% opacity, 1px bottom border) ---
-            GameObject topBarObj = new GameObject("TopBar_Container", typeof(RectTransform));
-            topBarObj.transform.SetParent(hudPanelObj.transform, false);
-            RectTransform topBarRt = topBarObj.GetComponent<RectTransform>();
-            topBarRt.anchorMin = new Vector2(0f, 1f);
-            topBarRt.anchorMax = new Vector2(1f, 1f);
-            topBarRt.pivot = new Vector2(0.5f, 1f);
-            topBarRt.anchoredPosition = Vector2.zero;
-            topBarRt.sizeDelta = new Vector2(0f, 64f);
-            topBarRt.localScale = Vector3.one;
+            // --- 1. Mini-Map Root (Top-Left): Pos: (20, -20), Size: (180, 180), Pivot: (0, 1), Anchors: (0, 1, 0, 1) ---
+            GameObject miniMapRootObj = new GameObject("MiniMap_Root", typeof(RectTransform));
+            miniMapRootObj.transform.SetParent(hudPanelObj.transform, false);
+            RectTransform mmRootRect = miniMapRootObj.GetComponent<RectTransform>();
+            mmRootRect.anchorMin = new Vector2(0f, 1f);
+            mmRootRect.anchorMax = new Vector2(0f, 1f);
+            mmRootRect.pivot = new Vector2(0f, 1f);
+            mmRootRect.anchoredPosition = new Vector2(20f, -20f);
+            mmRootRect.sizeDelta = new Vector2(180f, 180f);
+            mmRootRect.localScale = Vector3.one;
 
-            Image topBarImg = topBarObj.AddComponent<Image>();
-            topBarImg.sprite = GetOrCreateCyberTopBarSprite();
-            topBarImg.type = Image.Type.Sliced;
-            topBarImg.color = Color.white;
+            // Background Image: Solid Slate #0A0F1D circular panel with 2px Cyan outline #06B6D4
+            Image mmBg = miniMapRootObj.AddComponent<Image>();
+            mmBg.sprite = MiniMapController.GetOrCreateRadarBackgroundSprite();
+            mmBg.type = Image.Type.Simple;
+            mmBg.color = Color.white;
 
-            // --- Left: Health Bar (Inside TopBar_Container): Pos: (24, 0), Size: (260, 34) ---
+            // Blips Container: RectTransform (Stretch fill)
+            GameObject blipsContainerObj = new GameObject("MiniMap_BlipsContainer", typeof(RectTransform));
+            blipsContainerObj.transform.SetParent(miniMapRootObj.transform, false);
+            RectTransform blipsRect = blipsContainerObj.GetComponent<RectTransform>();
+            blipsRect.anchorMin = Vector2.zero;
+            blipsRect.anchorMax = Vector2.one;
+            blipsRect.pivot = new Vector2(0.5f, 0.5f);
+            blipsRect.offsetMin = Vector2.zero;
+            blipsRect.offsetMax = Vector2.zero;
+            blipsRect.localScale = Vector3.one;
+
+            // Attach and configure MiniMapController
+            MiniMapController mmCtrl = miniMapRootObj.AddComponent<MiniMapController>();
+            mmCtrl.blipsContainer = blipsRect;
+            if (playerObj != null)
+            {
+                mmCtrl.playerTransform = playerObj.transform;
+            }
+
+            // --- 2. Health Bar (Directly below Mini-Map): Pos: 20, -210; Size: 280, 36; Pivot: (0, 1), Anchors: (0, 1, 0, 1) ---
             GameObject hbRootObj = new GameObject("HealthBar_Root", typeof(RectTransform));
-            hbRootObj.transform.SetParent(topBarObj.transform, false);
+            hbRootObj.transform.SetParent(hudPanelObj.transform, false);
             RectTransform hbRootRect = hbRootObj.GetComponent<RectTransform>();
-            hbRootRect.anchorMin = new Vector2(0f, 0.5f);
-            hbRootRect.anchorMax = new Vector2(0f, 0.5f);
-            hbRootRect.pivot = new Vector2(0f, 0.5f);
-            hbRootRect.anchoredPosition = new Vector2(24f, 0f);
-            hbRootRect.sizeDelta = new Vector2(260f, 34f);
+            hbRootRect.anchorMin = new Vector2(0f, 1f);
+            hbRootRect.anchorMax = new Vector2(0f, 1f);
+            hbRootRect.pivot = new Vector2(0f, 1f);
+            hbRootRect.anchoredPosition = new Vector2(20f, -210f);
+            hbRootRect.sizeDelta = new Vector2(280f, 36f);
             hbRootRect.localScale = Vector3.one;
 
+            // Background Image: Solid Dark Slate #1E293B
             Image hbBg = hbRootObj.AddComponent<Image>();
-            hbBg.sprite = GetOrCreateCyberCardRowSprite();
-            hbBg.type = Image.Type.Sliced;
-            hbBg.color = Color.white;
+            hbBg.sprite = HealthBarUI.GetOrCreateWhiteSprite();
+            hbBg.type = Image.Type.Simple;
+            ColorUtility.TryParseHtmlString("#1E293B", out Color darkSlateHbBg);
+            hbBg.color = darkSlateHbBg != default ? darkSlateHbBg : ColorHealthBarBg;
 
+            // Child "FillImage": Stretch fill (0, 0 to 1, 1). Filled horizontal. Green #22C55E
             GameObject fillObj = new GameObject("FillImage", typeof(RectTransform));
             fillObj.transform.SetParent(hbRootObj.transform, false);
             RectTransform fillRect = fillObj.GetComponent<RectTransform>();
             fillRect.anchorMin = Vector2.zero;
             fillRect.anchorMax = Vector2.one;
-            fillRect.offsetMin = new Vector2(2f, 2f);
-            fillRect.offsetMax = new Vector2(-2f, -2f);
+            fillRect.offsetMin = Vector2.zero;
+            fillRect.offsetMax = Vector2.zero;
             fillRect.localScale = Vector3.one;
 
             Image fillImg = fillObj.AddComponent<Image>();
@@ -1992,8 +1650,10 @@ namespace GameJam.Editor
             fillImg.fillMethod = Image.FillMethod.Horizontal;
             fillImg.fillOrigin = (int)Image.OriginHorizontal.Left;
             fillImg.fillAmount = 1f;
-            fillImg.color = ColorElectricCyan; // #00f0ff
+            ColorUtility.TryParseHtmlString("#22C55E", out Color greenFill);
+            fillImg.color = greenFill != default ? greenFill : ColorHealthBarFill;
 
+            // Child "HP_Text": Stretch fill. Auto-sizing min 16 max 20, center bold white
             GameObject hpTextObj = new GameObject("HP_Text", typeof(RectTransform));
             hpTextObj.transform.SetParent(hbRootObj.transform, false);
             RectTransform hpTextRect = hpTextObj.GetComponent<RectTransform>();
@@ -2005,7 +1665,7 @@ namespace GameJam.Editor
 
             TextMeshProUGUI hpTmp = hpTextObj.AddComponent<TextMeshProUGUI>();
             hpTmp.text = "HP: 5 / 5";
-            ConfigureTMPText(hpTmp, fontAsset, fontSize: 18f, alignment: TextAlignmentOptions.Center, color: ColorCrispWhite);
+            ConfigureTMPText(hpTmp, fontAsset, fontSize: 18f, alignment: TextAlignmentOptions.Center, color: Color.white);
 
             HealthBarUI healthUI = hbRootObj.AddComponent<HealthBarUI>();
             healthUI.backgroundImage = hbBg;
@@ -2017,97 +1677,21 @@ namespace GameJam.Editor
                 healthUI.player = playerObj.GetComponent<PlayerController>();
             }
 
-            // --- Center: Timer (Inside TopBar_Container): Formatted as "SURVIVE: XXs" in #ffe600 ---
-            GameObject timerObj = new GameObject("Timer_Text", typeof(RectTransform));
-            timerObj.transform.SetParent(topBarObj.transform, false);
-            RectTransform timerRect = timerObj.GetComponent<RectTransform>();
-            timerRect.anchorMin = new Vector2(0.5f, 0.5f);
-            timerRect.anchorMax = new Vector2(0.5f, 0.5f);
-            timerRect.pivot = new Vector2(0.5f, 0.5f);
-            timerRect.anchoredPosition = Vector2.zero;
-            timerRect.sizeDelta = new Vector2(340f, 48f);
-            timerRect.localScale = Vector3.one;
-
-            TextMeshProUGUI timerTmp = timerObj.AddComponent<TextMeshProUGUI>();
-            timerTmp.text = "SURVIVE: 20s";
-            ConfigureTMPText(timerTmp, fontAsset, fontSize: 34f, alignment: TextAlignmentOptions.Center, color: ColorTimerYellow);
-
-            // --- Right: "NODES PURGED: XXXX" counter in #ffffff (Inside TopBar_Container) ---
-            GameObject scoreObj = new GameObject("Score_Text", typeof(RectTransform));
-            scoreObj.transform.SetParent(topBarObj.transform, false);
-            RectTransform scoreRect = scoreObj.GetComponent<RectTransform>();
-            scoreRect.anchorMin = new Vector2(1f, 0.5f);
-            scoreRect.anchorMax = new Vector2(1f, 0.5f);
-            scoreRect.pivot = new Vector2(1f, 0.5f);
-            scoreRect.anchoredPosition = new Vector2(-24f, 0f);
-            scoreRect.sizeDelta = new Vector2(340f, 40f);
-            scoreRect.localScale = Vector3.one;
-
-            TextMeshProUGUI scoreTmp = scoreObj.AddComponent<TextMeshProUGUI>();
-            scoreTmp.text = "NODES PURGED: 0";
-            ConfigureTMPText(scoreTmp, fontAsset, fontSize: 26f, alignment: TextAlignmentOptions.Right, color: ColorCrispWhite);
-
-            GameObject multObj = new GameObject("Multiplier_Text", typeof(RectTransform));
-            multObj.transform.SetParent(scoreObj.transform, false);
-            RectTransform multRect = multObj.GetComponent<RectTransform>();
-            multRect.anchorMin = new Vector2(1f, 0f);
-            multRect.anchorMax = new Vector2(1f, 0f);
-            multRect.pivot = new Vector2(1f, 1f);
-            multRect.anchoredPosition = new Vector2(0f, -4f);
-            multRect.sizeDelta = new Vector2(300f, 24f);
-            multRect.localScale = Vector3.one;
-
-            TextMeshProUGUI multTmp = multObj.AddComponent<TextMeshProUGUI>();
-            multTmp.text = "";
-            ConfigureTMPText(multTmp, fontAsset, fontSize: 18f, alignment: TextAlignmentOptions.Right, color: ColorGlowHighlight);
-
-            // --- Mini-Map Root: Positioned directly below TopBar: Pos: (24, -78), Size: (170, 170) ---
-            GameObject miniMapRootObj = new GameObject("MiniMap_Root", typeof(RectTransform));
-            miniMapRootObj.transform.SetParent(hudPanelObj.transform, false);
-            RectTransform mmRootRect = miniMapRootObj.GetComponent<RectTransform>();
-            mmRootRect.anchorMin = new Vector2(0f, 1f);
-            mmRootRect.anchorMax = new Vector2(0f, 1f);
-            mmRootRect.pivot = new Vector2(0f, 1f);
-            mmRootRect.anchoredPosition = new Vector2(24f, -78f);
-            mmRootRect.sizeDelta = new Vector2(170f, 170f);
-            mmRootRect.localScale = Vector3.one;
-
-            Image mmBg = miniMapRootObj.AddComponent<Image>();
-            mmBg.sprite = MiniMapController.GetOrCreateRadarBackgroundSprite();
-            mmBg.type = Image.Type.Simple;
-            mmBg.color = Color.white;
-
-            GameObject blipsContainerObj = new GameObject("MiniMap_BlipsContainer", typeof(RectTransform));
-            blipsContainerObj.transform.SetParent(miniMapRootObj.transform, false);
-            RectTransform blipsRect = blipsContainerObj.GetComponent<RectTransform>();
-            blipsRect.anchorMin = Vector2.zero;
-            blipsRect.anchorMax = Vector2.one;
-            blipsRect.pivot = new Vector2(0.5f, 0.5f);
-            blipsRect.offsetMin = Vector2.zero;
-            blipsRect.offsetMax = Vector2.zero;
-            blipsRect.localScale = Vector3.one;
-
-            MiniMapController mmCtrl = miniMapRootObj.AddComponent<MiniMapController>();
-            mmCtrl.blipsContainer = blipsRect;
-            if (playerObj != null)
-            {
-                mmCtrl.playerTransform = playerObj.transform;
-            }
-
-            // --- Neural Hijack Indicator: Positioned below Mini-Map: Pos: (24, -260), Size: (350, 30) ---
+            // --- 3. Neural Hijack Indicator (Below Health Bar): Pos: (20, -255), Size: (350, 30), Pivot: (0, 1), Anchors: (0, 1, 0, 1) ---
             GameObject hijackObj = new GameObject("Hijack_Text", typeof(RectTransform));
             hijackObj.transform.SetParent(hudPanelObj.transform, false);
             RectTransform hijackRect = hijackObj.GetComponent<RectTransform>();
             hijackRect.anchorMin = new Vector2(0f, 1f);
             hijackRect.anchorMax = new Vector2(0f, 1f);
             hijackRect.pivot = new Vector2(0f, 1f);
-            hijackRect.anchoredPosition = new Vector2(24f, -260f);
+            hijackRect.anchoredPosition = new Vector2(20f, -255f);
             hijackRect.sizeDelta = new Vector2(350f, 30f);
             hijackRect.localScale = Vector3.one;
 
             TextMeshProUGUI hijackTmp = hijackObj.AddComponent<TextMeshProUGUI>();
             hijackTmp.text = "HIJACK: [READY] (R-CLICK)";
-            ConfigureTMPText(hijackTmp, fontAsset, fontSize: 20f, alignment: TextAlignmentOptions.Left, color: ColorElectricCyan);
+            ColorUtility.TryParseHtmlString("#06B6D4", out Color cyanHijack);
+            ConfigureTMPText(hijackTmp, fontAsset, fontSize: 20f, alignment: TextAlignmentOptions.Left, color: cyanHijack != default ? cyanHijack : ColorElectricCyan);
 
             if (playerObj != null)
             {
@@ -2118,128 +1702,121 @@ namespace GameJam.Editor
                 }
             }
 
-            // 3. Build StartMenuPanel (Modal Overlay, Dark Charcoal #0f141d with 90% opacity & 1px #1e293b border)
-            Transform oldStartMenu = canvasObj.transform.Find("StartMenuPanel");
-            if (oldStartMenu != null) Object.DestroyImmediate(oldStartMenu.gameObject);
-            Transform oldStart = canvasObj.transform.Find("StartPanel");
-            if (oldStart != null) Object.DestroyImmediate(oldStart.gameObject);
+            // --- 4. Timer (Top-Center): Pos: (0, -40), Size: (400, 60), Pivot: (0.5, 1), Anchors: (0.5, 1, 0.5, 1) ---
+            GameObject timerObj = new GameObject("Timer_Text", typeof(RectTransform));
+            timerObj.transform.SetParent(hudPanelObj.transform, false);
+            RectTransform timerRect = timerObj.GetComponent<RectTransform>();
+            timerRect.anchorMin = new Vector2(0.5f, 1f);
+            timerRect.anchorMax = new Vector2(0.5f, 1f);
+            timerRect.pivot = new Vector2(0.5f, 1f);
+            timerRect.anchoredPosition = new Vector2(0f, -40f);
+            timerRect.sizeDelta = new Vector2(400f, 60f);
+            timerRect.localScale = Vector3.one;
 
-            GameObject startMenuPanelObj = new GameObject("StartMenuPanel", typeof(RectTransform));
-            startMenuPanelObj.transform.SetParent(canvasObj.transform, false);
-            RectTransform startRect = startMenuPanelObj.GetComponent<RectTransform>();
+            TextMeshProUGUI timerTmp = timerObj.AddComponent<TextMeshProUGUI>();
+            timerTmp.text = "SURVIVE: 20s";
+            ConfigureTMPText(timerTmp, fontAsset, fontSize: 48f, alignment: TextAlignmentOptions.Center, color: Color.white);
+
+            // --- 5. Score & Multiplier (Top-Right): Pos: (-40, -40), Size: (320, 50), Pivot: (1, 1), Anchors: (1, 1, 1, 1) ---
+            GameObject scoreObj = new GameObject("Score_Text", typeof(RectTransform));
+            scoreObj.transform.SetParent(hudPanelObj.transform, false);
+            RectTransform scoreRect = scoreObj.GetComponent<RectTransform>();
+            scoreRect.anchorMin = new Vector2(1f, 1f);
+            scoreRect.anchorMax = new Vector2(1f, 1f);
+            scoreRect.pivot = new Vector2(1f, 1f);
+            scoreRect.anchoredPosition = new Vector2(-40f, -40f);
+            scoreRect.sizeDelta = new Vector2(320f, 50f);
+            scoreRect.localScale = Vector3.one;
+
+            TextMeshProUGUI scoreTmp = scoreObj.AddComponent<TextMeshProUGUI>();
+            scoreTmp.text = "SCORE: 0";
+            ConfigureTMPText(scoreTmp, fontAsset, fontSize: 32f, alignment: TextAlignmentOptions.Right, color: Color.white);
+
+            GameObject multObj = new GameObject("Multiplier_Text", typeof(RectTransform));
+            multObj.transform.SetParent(scoreObj.transform, false);
+            RectTransform multRect = multObj.GetComponent<RectTransform>();
+            multRect.anchorMin = new Vector2(1f, 1f);
+            multRect.anchorMax = new Vector2(1f, 1f);
+            multRect.pivot = new Vector2(1f, 1f);
+            multRect.anchoredPosition = new Vector2(0f, -36f);
+            multRect.sizeDelta = new Vector2(320f, 32f);
+            multRect.localScale = Vector3.one;
+
+            TextMeshProUGUI multTmp = multObj.AddComponent<TextMeshProUGUI>();
+            multTmp.text = "";
+            ConfigureTMPText(multTmp, fontAsset, fontSize: 20f, alignment: TextAlignmentOptions.Right, color: ColorTimerGold);
+
+            // 3. Build StartPanel (Modal Overlay, Dark Navy/Slate #0F172A at 95% opacity)
+            GameObject startPanelObj = new GameObject("StartPanel", typeof(RectTransform));
+            startPanelObj.transform.SetParent(canvasObj.transform, false);
+            RectTransform startRect = startPanelObj.GetComponent<RectTransform>();
             startRect.anchorMin = Vector2.zero;
             startRect.anchorMax = Vector2.one;
             startRect.offsetMin = Vector2.zero;
             startRect.offsetMax = Vector2.zero;
             startRect.localScale = Vector3.one;
-            GameObject startPanelObj = startMenuPanelObj;
 
-            Image startBg = startMenuPanelObj.AddComponent<Image>();
-            startBg.sprite = GetOrCreateCyberPanelSprite();
-            startBg.type = Image.Type.Sliced;
-            startBg.color = Color.white;
+            Image startBg = startPanelObj.AddComponent<Image>();
+            startBg.sprite = HealthBarUI.GetOrCreateWhiteSprite();
+            startBg.type = Image.Type.Simple;
+            startBg.color = ColorMainPanelBg;
 
-            // --- Top Badge: "v1.0.4 • BUILD 802" in Light Cyan #00f0ff at top-left ---
-            GameObject badgeObj = new GameObject("Badge_Version", typeof(RectTransform));
-            badgeObj.transform.SetParent(startMenuPanelObj.transform, false);
-            RectTransform badgeRt = badgeObj.GetComponent<RectTransform>();
-            badgeRt.anchorMin = new Vector2(0f, 1f);
-            badgeRt.anchorMax = new Vector2(0f, 1f);
-            badgeRt.pivot = new Vector2(0f, 1f);
-            badgeRt.anchoredPosition = new Vector2(40f, -35f);
-            badgeRt.sizeDelta = new Vector2(260f, 32f);
-            badgeRt.localScale = Vector3.one;
+            // Title Panel: min width = 900, min height = 120
+            GameObject titleObj = new GameObject("Title_Text", typeof(RectTransform));
+            titleObj.transform.SetParent(startPanelObj.transform, false);
+            RectTransform titleRect = titleObj.GetComponent<RectTransform>();
+            titleRect.anchorMin = new Vector2(0.5f, 0.5f);
+            titleRect.anchorMax = new Vector2(0.5f, 0.5f);
+            titleRect.pivot = new Vector2(0.5f, 0.5f);
+            titleRect.anchoredPosition = new Vector2(0f, 175f);
+            titleRect.sizeDelta = new Vector2(900f, 120f);
+            titleRect.localScale = Vector3.one;
 
-            TextMeshProUGUI badgeTmp = badgeObj.AddComponent<TextMeshProUGUI>();
-            badgeTmp.text = "v1.0.4 • BUILD 802";
-            ConfigureTMPText(badgeTmp, fontAsset, fontSize: 15f, alignment: TextAlignmentOptions.Left, color: ColorElectricCyan);
+            TextMeshProUGUI titleTmp = titleObj.AddComponent<TextMeshProUGUI>();
+            titleTmp.text = "NEURAL OVERRIDE";
+            ConfigureTMPText(titleTmp, fontAsset, fontSize: 56f, alignment: TextAlignmentOptions.Center, color: ColorElectricCyan);
 
-            // --- Audio Quick Toggle: Top-Right button displaying "AUDIO: ON" / "AUDIO: MUTED" ---
-            Button audioToggleBtn = CreateCyberButton(startMenuPanelObj.transform, "Btn_AudioQuickToggle", new Vector2(-40f, -35f), new Vector2(170f, 40f), "AUDIO: ON", 14f, fontAsset);
-            RectTransform audioRt = audioToggleBtn.GetComponent<RectTransform>();
-            audioRt.anchorMin = new Vector2(1f, 1f);
-            audioRt.anchorMax = new Vector2(1f, 1f);
-            audioRt.pivot = new Vector2(1f, 1f);
-            audioRt.anchoredPosition = new Vector2(-40f, -35f);
+            // Subtitle: (Pos: 0, 100; Size: 800, 45)
+            GameObject subObj = new GameObject("Subtitle_Text", typeof(RectTransform));
+            subObj.transform.SetParent(startPanelObj.transform, false);
+            RectTransform subRect = subObj.GetComponent<RectTransform>();
+            subRect.anchorMin = new Vector2(0.5f, 0.5f);
+            subRect.anchorMax = new Vector2(0.5f, 0.5f);
+            subRect.pivot = new Vector2(0.5f, 0.5f);
+            subRect.anchoredPosition = new Vector2(0f, 100f);
+            subRect.sizeDelta = new Vector2(800f, 45f);
+            subRect.localScale = Vector3.one;
 
-            // --- Title Header: Large centered text "NEURAL OVERRIDE" in bold #00f0ff with subtle #38bdf8 glow overlay, subtitle "2D ACTION SURVIVAL" in #94a3b8 ---
-            GameObject titleHeaderObj = new GameObject("Title_Header", typeof(RectTransform));
-            titleHeaderObj.transform.SetParent(startMenuPanelObj.transform, false);
-            RectTransform titleHeaderRt = titleHeaderObj.GetComponent<RectTransform>();
-            titleHeaderRt.anchorMin = new Vector2(0.5f, 0.5f);
-            titleHeaderRt.anchorMax = new Vector2(0.5f, 0.5f);
-            titleHeaderRt.pivot = new Vector2(0.5f, 0.5f);
-            titleHeaderRt.anchoredPosition = new Vector2(0f, 160f);
-            titleHeaderRt.sizeDelta = new Vector2(800f, 140f);
-            titleHeaderRt.localScale = Vector3.one;
+            TextMeshProUGUI subTmp = subObj.AddComponent<TextMeshProUGUI>();
+            subTmp.text = "SELECT PROTOCOL LEVEL:";
+            ConfigureTMPText(subTmp, fontAsset, fontSize: 20f, alignment: TextAlignmentOptions.Center, color: ColorSlateMuted);
 
-            // Title Glow Behind: Subtle #38bdf8 overlay glow
-            GameObject titleGlowObj = new GameObject("Title_Glow", typeof(RectTransform));
-            titleGlowObj.transform.SetParent(titleHeaderObj.transform, false);
-            RectTransform titleGlowRt = titleGlowObj.GetComponent<RectTransform>();
-            titleGlowRt.anchorMin = new Vector2(0.5f, 0.5f);
-            titleGlowRt.anchorMax = new Vector2(0.5f, 0.5f);
-            titleGlowRt.pivot = new Vector2(0.5f, 0.5f);
-            titleGlowRt.anchoredPosition = new Vector2(0f, 12f);
-            titleGlowRt.sizeDelta = new Vector2(800f, 75f);
-            titleGlowRt.localScale = Vector3.one;
-
-            TextMeshProUGUI titleGlowTmp = titleGlowObj.AddComponent<TextMeshProUGUI>();
-            titleGlowTmp.text = "NEURAL OVERRIDE";
-            ConfigureTMPText(titleGlowTmp, fontAsset, fontSize: 68f, alignment: TextAlignmentOptions.Center, color: new Color(56f / 255f, 189f / 255f, 248f / 255f, 0.35f));
-
-            // Title Main Front: Bold #00f0ff Electric Cyan
-            GameObject titleMainObj = new GameObject("Title_Main", typeof(RectTransform));
-            titleMainObj.transform.SetParent(titleHeaderObj.transform, false);
-            RectTransform titleMainRt = titleMainObj.GetComponent<RectTransform>();
-            titleMainRt.anchorMin = new Vector2(0.5f, 0.5f);
-            titleMainRt.anchorMax = new Vector2(0.5f, 0.5f);
-            titleMainRt.pivot = new Vector2(0.5f, 0.5f);
-            titleMainRt.anchoredPosition = new Vector2(0f, 10f);
-            titleMainRt.sizeDelta = new Vector2(800f, 75f);
-            titleMainRt.localScale = Vector3.one;
-
-            TextMeshProUGUI titleMainTmp = titleMainObj.AddComponent<TextMeshProUGUI>();
-            titleMainTmp.text = "NEURAL OVERRIDE";
-            ConfigureTMPText(titleMainTmp, fontAsset, fontSize: 68f, alignment: TextAlignmentOptions.Center, color: ColorElectricCyan);
-
-            // Subtitle: "2D ACTION SURVIVAL" in Muted Slate #94a3b8
-            GameObject subtitleObj = new GameObject("Subtitle_Text", typeof(RectTransform));
-            subtitleObj.transform.SetParent(titleHeaderObj.transform, false);
-            RectTransform subRt = subtitleObj.GetComponent<RectTransform>();
-            subRt.anchorMin = new Vector2(0.5f, 0.5f);
-            subRt.anchorMax = new Vector2(0.5f, 0.5f);
-            subRt.pivot = new Vector2(0.5f, 0.5f);
-            subRt.anchoredPosition = new Vector2(0f, -48f);
-            subRt.sizeDelta = new Vector2(600f, 32f);
-            subRt.localScale = Vector3.one;
-
-            TextMeshProUGUI subTmp = subtitleObj.AddComponent<TextMeshProUGUI>();
-            subTmp.text = "2D ACTION SURVIVAL";
-            ConfigureTMPText(subTmp, fontAsset, fontSize: 20f, alignment: TextAlignmentOptions.Center, color: ColorMutedSlate, characterSpacing: 18f);
-
-            // --- Protocol Level Selector Row (Easy / Normal / Expert) ---
+            // Difficulty Button Row with HorizontalLayoutGroup to guarantee buttons expand proportionately
             GameObject diffGroupObj = new GameObject("DifficultyButtonGroup", typeof(RectTransform));
-            diffGroupObj.transform.SetParent(startMenuPanelObj.transform, false);
+            diffGroupObj.transform.SetParent(startPanelObj.transform, false);
             RectTransform diffGroupRect = diffGroupObj.GetComponent<RectTransform>();
             diffGroupRect.anchorMin = new Vector2(0.5f, 0.5f);
             diffGroupRect.anchorMax = new Vector2(0.5f, 0.5f);
             diffGroupRect.pivot = new Vector2(0.5f, 0.5f);
-            diffGroupRect.anchoredPosition = new Vector2(0f, 42f);
-            diffGroupRect.sizeDelta = new Vector2(580f, 38f);
+            diffGroupRect.anchoredPosition = new Vector2(0f, 15f);
+            diffGroupRect.sizeDelta = new Vector2(850f, 65f);
             diffGroupRect.localScale = Vector3.one;
 
             HorizontalLayoutGroup hlg = diffGroupObj.AddComponent<HorizontalLayoutGroup>();
-            hlg.spacing = 14f;
+            hlg.spacing = 24f;
             hlg.childAlignment = TextAnchor.MiddleCenter;
             hlg.childControlWidth = false;
             hlg.childControlHeight = false;
             hlg.childForceExpandWidth = false;
             hlg.childForceExpandHeight = false;
 
-            Button easyBtn = CreateCyberButton(diffGroupObj.transform, "Btn_Easy", Vector2.zero, new Vector2(180f, 36f), "EASY (20s)", 14f, fontAsset);
-            Button normalBtn = CreateCyberButton(diffGroupObj.transform, "Btn_Normal", Vector2.zero, new Vector2(180f, 36f), "NORMAL (50s)", 14f, fontAsset);
-            Button expertBtn = CreateCyberButton(diffGroupObj.transform, "Btn_Expert", Vector2.zero, new Vector2(180f, 36f), "EXPERT (90s)", 14f, fontAsset);
+            ContentSizeFitter existingDiffCsf = diffGroupObj.GetComponent<ContentSizeFitter>();
+            if (existingDiffCsf != null) Object.DestroyImmediate(existingDiffCsf);
+
+            // Buttons: Clean Charcoal #1E293B with bold crisp white text and bright hover highlights
+            Button easyBtn = CreateFlatButton(diffGroupObj.transform, "Btn_Easy", Vector2.zero, new Vector2(260f, 60f), "EASY (20s)", ColorButtonCharcoal, Color.white, 22f, ColorButtonHoverHighlight, fontAsset);
+            Button normalBtn = CreateFlatButton(diffGroupObj.transform, "Btn_Normal", Vector2.zero, new Vector2(260f, 60f), "NORMAL (50s)", ColorButtonCharcoal, Color.white, 22f, ColorButtonHoverHighlight, fontAsset);
+            Button expertBtn = CreateFlatButton(diffGroupObj.transform, "Btn_Expert", Vector2.zero, new Vector2(260f, 60f), "EXPERT (90s)", ColorButtonCharcoal, Color.white, 22f, ColorButtonHoverHighlight, fontAsset);
 
             if (gm != null)
             {
@@ -2255,79 +1832,18 @@ namespace GameJam.Editor
                 gm.expertBtnImage = expertBtn.GetComponent<Image>();
             }
 
-            // --- Menu Panel Layout: Centered vertical layout container (VerticalLayoutGroup with 16px spacing, child force expand width = false) ---
-            GameObject menuContainerObj = new GameObject("MenuContainer", typeof(RectTransform));
-            menuContainerObj.transform.SetParent(startMenuPanelObj.transform, false);
-            RectTransform menuContainerRt = menuContainerObj.GetComponent<RectTransform>();
-            menuContainerRt.anchorMin = new Vector2(0.5f, 0.5f);
-            menuContainerRt.anchorMax = new Vector2(0.5f, 0.5f);
-            menuContainerRt.pivot = new Vector2(0.5f, 0.5f);
-            menuContainerRt.anchoredPosition = new Vector2(0f, -75f);
-            menuContainerRt.sizeDelta = new Vector2(360f, 200f);
-            menuContainerRt.localScale = Vector3.one;
-
-            VerticalLayoutGroup menuVlg = menuContainerObj.AddComponent<VerticalLayoutGroup>();
-            menuVlg.spacing = 16f;
-            menuVlg.childAlignment = TextAnchor.MiddleCenter;
-            menuVlg.childControlWidth = false;
-            menuVlg.childControlHeight = false;
-            menuVlg.childForceExpandWidth = false;
-            menuVlg.childForceExpandHeight = false;
-
-            // Buttons: "START MISSION", "SETTINGS", and "QUIT" (Cyber button components with smooth hover scale 1.05x)
-            Button startBtn = CreateCyberButton(menuContainerObj.transform, "Btn_Start", Vector2.zero, new Vector2(340f, 56f), "START MISSION", 22f, fontAsset);
-            Button settingsBtn = CreateCyberButton(menuContainerObj.transform, "Btn_Settings", Vector2.zero, new Vector2(340f, 50f), "SETTINGS", 18f, fontAsset);
-            Button exitBtn = CreateCyberButton(menuContainerObj.transform, "Btn_Exit", Vector2.zero, new Vector2(340f, 50f), "QUIT", 18f, fontAsset);
-
+            // Start Action Button: Width = 520, Height = 70 (Vivid Emerald Green #10B981)
+            Button startBtn = CreateFlatButton(startPanelObj.transform, "Btn_Start", new Vector2(0f, -85f), new Vector2(520f, 70f), "INITIALIZE SYSTEM (SPACE)", ColorStartBtnEmerald, Color.white, 26f, ColorStartBtnHover, fontAsset);
             if (gm != null)
             {
-                while (startBtn.onClick.GetPersistentEventCount() > 0)
-                {
-                    UnityEventTools.RemovePersistentListener(startBtn.onClick, 0);
-                }
-                UnityEventTools.AddPersistentListener(startBtn.onClick, gm.ResetGame);
+                UnityEventTools.AddPersistentListener(startBtn.onClick, gm.StartGame);
                 gm.StartBtnImage = startBtn.GetComponent<Image>();
                 gm.StartBtnLabel = startBtn.GetComponentInChildren<TextMeshProUGUI>();
-
-                UnityEventTools.AddPersistentListener(settingsBtn.onClick, gm.OpenSettingsFromStart);
-                UnityEventTools.AddPersistentListener(exitBtn.onClick, gm.QuitGame);
             }
 
-            // --- Secondary Action Row: Eye Comfort Filter toggle ---
-            Button eyeFilterBtn = CreateCyberButton(startMenuPanelObj.transform, "Btn_EyeFilter", new Vector2(0f, -195f), new Vector2(240f, 36f), "APPLY EYE FILTER MODE", 13f, fontAsset);
+            startPanelObj.SetActive(true);
 
-            // --- Footer Banner: Left "PRESS SPACE OR CLICK START MISSION", Right "AN ORIGINAL 2D ADVENTURE • ALL RIGHTS RESERVED" ---
-            GameObject footerLeftObj = new GameObject("Footer_Badge_Left", typeof(RectTransform));
-            footerLeftObj.transform.SetParent(startMenuPanelObj.transform, false);
-            RectTransform footerLeftRt = footerLeftObj.GetComponent<RectTransform>();
-            footerLeftRt.anchorMin = new Vector2(0f, 0f);
-            footerLeftRt.anchorMax = new Vector2(0f, 0f);
-            footerLeftRt.pivot = new Vector2(0f, 0f);
-            footerLeftRt.anchoredPosition = new Vector2(40f, 25f);
-            footerLeftRt.sizeDelta = new Vector2(380f, 26f);
-            footerLeftRt.localScale = Vector3.one;
-
-            TextMeshProUGUI footerLeftTmp = footerLeftObj.AddComponent<TextMeshProUGUI>();
-            footerLeftTmp.text = "PRESS SPACE OR CLICK START MISSION";
-            ConfigureTMPText(footerLeftTmp, fontAsset, fontSize: 13f, alignment: TextAlignmentOptions.Left, color: ColorMutedSlate);
-
-            GameObject footerRightObj = new GameObject("Footer_Text_Right", typeof(RectTransform));
-            footerRightObj.transform.SetParent(startMenuPanelObj.transform, false);
-            RectTransform footerRightRt = footerRightObj.GetComponent<RectTransform>();
-            footerRightRt.anchorMin = new Vector2(1f, 0f);
-            footerRightRt.anchorMax = new Vector2(1f, 0f);
-            footerRightRt.pivot = new Vector2(1f, 0f);
-            footerRightRt.anchoredPosition = new Vector2(-40f, 25f);
-            footerRightRt.sizeDelta = new Vector2(460f, 26f);
-            footerRightRt.localScale = Vector3.one;
-
-            TextMeshProUGUI footerRightTmp = footerRightObj.AddComponent<TextMeshProUGUI>();
-            footerRightTmp.text = "AN ORIGINAL 2D ADVENTURE • ALL RIGHTS RESERVED";
-            ConfigureTMPText(footerRightTmp, fontAsset, fontSize: 13f, alignment: TextAlignmentOptions.Right, color: ColorMutedSlate);
-
-            startMenuPanelObj.SetActive(true);
-
-            // 4. Build GameOver Panel (Dark Desaturated Charcoal #0f141d with 90% opacity, Glitch Crimson #ff0055 accent)
+            // 4. Build GameOver & Victory Panels (Dark Navy/Slate #0F172A at 95% opacity)
             GameObject gameOverPanelObj = new GameObject("GameOverPanel", typeof(RectTransform));
             gameOverPanelObj.transform.SetParent(canvasObj.transform, false);
             RectTransform goRect = gameOverPanelObj.GetComponent<RectTransform>();
@@ -2338,39 +1854,39 @@ namespace GameJam.Editor
             goRect.localScale = Vector3.one;
 
             Image goBg = gameOverPanelObj.AddComponent<Image>();
-            goBg.sprite = GetOrCreateCyberPanelSprite();
-            goBg.type = Image.Type.Sliced;
-            goBg.color = Color.white;
+            goBg.sprite = HealthBarUI.GetOrCreateWhiteSprite();
+            goBg.type = Image.Type.Simple;
+            goBg.color = ColorMainPanelBg;
 
-            // Header: "CRITICAL FAILURE" in Glitch Crimson #ff0055
+            // Header: (Pos: 0, 95; Size: 900, 120), fontSize = 56, Bold Red #EF4444
             GameObject goHeaderObj = new GameObject("Header_Text", typeof(RectTransform));
             goHeaderObj.transform.SetParent(gameOverPanelObj.transform, false);
             RectTransform goHeaderRect = goHeaderObj.GetComponent<RectTransform>();
             goHeaderRect.anchorMin = new Vector2(0.5f, 0.5f);
             goHeaderRect.anchorMax = new Vector2(0.5f, 0.5f);
             goHeaderRect.pivot = new Vector2(0.5f, 0.5f);
-            goHeaderRect.anchoredPosition = new Vector2(0f, 105f);
-            goHeaderRect.sizeDelta = new Vector2(900f, 80f);
+            goHeaderRect.anchoredPosition = new Vector2(0f, 95f);
+            goHeaderRect.sizeDelta = new Vector2(900f, 120f);
             goHeaderRect.localScale = Vector3.one;
 
             TextMeshProUGUI goHeaderTmp = goHeaderObj.AddComponent<TextMeshProUGUI>();
             goHeaderTmp.text = "CRITICAL FAILURE";
-            ConfigureTMPText(goHeaderTmp, fontAsset, fontSize: 56f, alignment: TextAlignmentOptions.Center, color: ColorGlitchCrimson);
+            ConfigureTMPText(goHeaderTmp, fontAsset, fontSize: 56f, alignment: TextAlignmentOptions.Center, color: ColorCriticalRed);
 
-            // Score: "NODES PURGED: 0"
+            // Score & Stats text for Game Over
             GameObject goScoreObj = new GameObject("GameOverScore_Text", typeof(RectTransform));
             goScoreObj.transform.SetParent(gameOverPanelObj.transform, false);
             RectTransform goScoreRect = goScoreObj.GetComponent<RectTransform>();
             goScoreRect.anchorMin = new Vector2(0.5f, 0.5f);
             goScoreRect.anchorMax = new Vector2(0.5f, 0.5f);
             goScoreRect.pivot = new Vector2(0.5f, 0.5f);
-            goScoreRect.anchoredPosition = new Vector2(0f, 25f);
+            goScoreRect.anchoredPosition = new Vector2(0f, 20f);
             goScoreRect.sizeDelta = new Vector2(600f, 45f);
             goScoreRect.localScale = Vector3.one;
 
             TextMeshProUGUI goScoreTmp = goScoreObj.AddComponent<TextMeshProUGUI>();
-            goScoreTmp.text = "NODES PURGED: 0";
-            ConfigureTMPText(goScoreTmp, fontAsset, fontSize: 32f, alignment: TextAlignmentOptions.Center, color: ColorCrispWhite);
+            goScoreTmp.text = "SCORE: 0";
+            ConfigureTMPText(goScoreTmp, fontAsset, fontSize: 32f, alignment: TextAlignmentOptions.Center, color: Color.white);
 
             GameObject goStatsObj = new GameObject("GameOverStats_Text", typeof(RectTransform));
             goStatsObj.transform.SetParent(gameOverPanelObj.transform, false);
@@ -2378,35 +1894,26 @@ namespace GameJam.Editor
             goStatsRect.anchorMin = new Vector2(0.5f, 0.5f);
             goStatsRect.anchorMax = new Vector2(0.5f, 0.5f);
             goStatsRect.pivot = new Vector2(0.5f, 0.5f);
-            goStatsRect.anchoredPosition = new Vector2(0f, -20f);
+            goStatsRect.anchoredPosition = new Vector2(0f, -25f);
             goStatsRect.sizeDelta = new Vector2(800f, 35f);
             goStatsRect.localScale = Vector3.one;
 
             TextMeshProUGUI goStatsTmp = goStatsObj.AddComponent<TextMeshProUGUI>();
             goStatsTmp.text = "";
-            ConfigureTMPText(goStatsTmp, fontAsset, fontSize: 20f, alignment: TextAlignmentOptions.Center, color: ColorMutedSlate);
+            ConfigureTMPText(goStatsTmp, fontAsset, fontSize: 20f, alignment: TextAlignmentOptions.Center, color: ColorSlateMuted);
 
-            // Action Buttons
-            Button restartBtn = CreateGlitchCrimsonButton(gameOverPanelObj.transform, "Btn_Restart", new Vector2(0f, -85f), new Vector2(400f, 54f), "REBOOT (R)", 22f, fontAsset);
-            Button goSettingsBtn = CreateCyberButton(gameOverPanelObj.transform, "Btn_Settings", new Vector2(0f, -145f), new Vector2(400f, 48f), "SETTINGS", 18f, fontAsset);
-            Button goMenuBtn = CreateCyberButton(gameOverPanelObj.transform, "Btn_GameOverMenu", new Vector2(0f, -200f), new Vector2(400f, 48f), "MAIN MENU", 18f, fontAsset);
-
+            // Restart Button (Standard Button: Width = 520, Height = 60): Text = "REBOOT (R)"
+            Button restartBtn = CreateFlatButton(gameOverPanelObj.transform, "Btn_Restart", new Vector2(0f, -85f), new Vector2(520f, 60f), "REBOOT (R)", ColorButtonCharcoal, Color.white, 22f, ColorButtonHoverHighlight, fontAsset);
             if (gm != null)
             {
-                while (restartBtn.onClick.GetPersistentEventCount() > 0)
-                {
-                    UnityEventTools.RemovePersistentListener(restartBtn.onClick, 0);
-                }
-                UnityEventTools.AddPersistentListener(restartBtn.onClick, gm.ResetGame);
-                UnityEventTools.AddPersistentListener(goSettingsBtn.onClick, gm.OpenSettingsFromPause);
-                UnityEventTools.AddPersistentListener(goMenuBtn.onClick, gm.ExitToMenu);
+                UnityEventTools.AddPersistentListener(restartBtn.onClick, gm.RestartGame);
                 gm.GameOverScoreText = goScoreTmp;
                 gm.GameOverStatsText = goStatsTmp;
             }
 
             gameOverPanelObj.SetActive(false);
 
-            // 5. Build Victory Panel (Cyber Vector Palette, Electric Cyan #00f0ff accent)
+            // 5. Build Victory Panel (Fullscreen semi-transparent backdrop: Color(0.04f, 0.12f, 0.08f, 0.95f))
             GameObject victoryPanelObj = new GameObject("VictoryPanel", typeof(RectTransform));
             victoryPanelObj.transform.SetParent(canvasObj.transform, false);
             RectTransform vicRect = victoryPanelObj.GetComponent<RectTransform>();
@@ -2417,10 +1924,11 @@ namespace GameJam.Editor
             vicRect.localScale = Vector3.one;
 
             Image vicBg = victoryPanelObj.AddComponent<Image>();
-            vicBg.sprite = GetOrCreateCyberPanelSprite();
-            vicBg.type = Image.Type.Sliced;
-            vicBg.color = Color.white;
+            vicBg.sprite = HealthBarUI.GetOrCreateWhiteSprite();
+            vicBg.type = Image.Type.Simple;
+            vicBg.color = ColorVictoryPanelBg;
 
+            // Title Text: TextMeshProUGUI (Pos: 0, 130; Size: 900, 80), text = "NEURAL PURGE COMPLETE", color = Color.green, fontSize = 48, fontStyle = Bold, alignment = Center.
             GameObject vicTitleObj = new GameObject("Title_Text", typeof(RectTransform));
             vicTitleObj.transform.SetParent(victoryPanelObj.transform, false);
             RectTransform vicTitleRect = vicTitleObj.GetComponent<RectTransform>();
@@ -2428,32 +1936,31 @@ namespace GameJam.Editor
             vicTitleRect.anchorMax = new Vector2(0.5f, 0.5f);
             vicTitleRect.pivot = new Vector2(0.5f, 0.5f);
             vicTitleRect.anchoredPosition = new Vector2(0f, 130f);
-            vicTitleRect.sizeDelta = new Vector2(900f, 75f);
+            vicTitleRect.sizeDelta = new Vector2(900f, 80f);
             vicTitleRect.localScale = Vector3.one;
 
             TextMeshProUGUI vicTitleTmp = vicTitleObj.AddComponent<TextMeshProUGUI>();
             vicTitleTmp.text = "NEURAL PURGE COMPLETE";
-            ConfigureTMPText(vicTitleTmp, fontAsset, fontSize: 48f, alignment: TextAlignmentOptions.Center, color: ColorElectricCyan);
+            ConfigureTMPText(vicTitleTmp, fontAsset, fontSize: 48f, alignment: TextAlignmentOptions.Center, color: Color.green);
 
+            // Sub-text / Stats: TextMeshProUGUI (Pos: 0, 65; Size: 700, 40), text = "SECTOR SECURED", color = Color.white, fontSize = 22, alignment = Center.
             GameObject vicSubObj = new GameObject("Subtitle_Text", typeof(RectTransform));
             vicSubObj.transform.SetParent(victoryPanelObj.transform, false);
             RectTransform vicSubRect = vicSubObj.GetComponent<RectTransform>();
             vicSubRect.anchorMin = new Vector2(0.5f, 0.5f);
             vicSubRect.anchorMax = new Vector2(0.5f, 0.5f);
             vicSubRect.pivot = new Vector2(0.5f, 0.5f);
-            vicSubRect.anchoredPosition = new Vector2(0f, 72f);
-            vicSubRect.sizeDelta = new Vector2(700f, 36f);
+            vicSubRect.anchoredPosition = new Vector2(0f, 65f);
+            vicSubRect.sizeDelta = new Vector2(700f, 40f);
             vicSubRect.localScale = Vector3.one;
 
             TextMeshProUGUI vicSubTmp = vicSubObj.AddComponent<TextMeshProUGUI>();
             vicSubTmp.text = "SECTOR SECURED";
-            ConfigureTMPText(vicSubTmp, fontAsset, fontSize: 22f, alignment: TextAlignmentOptions.Center, color: ColorCrispWhite);
+            ConfigureTMPText(vicSubTmp, fontAsset, fontSize: 22f, alignment: TextAlignmentOptions.Center, color: Color.white);
 
-            Button nextLvlBtn = CreateCyberButton(victoryPanelObj.transform, "Btn_NextLevel", new Vector2(0f, 15f), new Vector2(400f, 52f), "ADVANCE TO NEXT LEVEL", 20f, fontAsset);
-            Button replayBtn = CreateCyberButton(victoryPanelObj.transform, "Btn_Replay", new Vector2(0f, -45f), new Vector2(400f, 48f), "RETRY (R)", 18f, fontAsset);
-            Button vicSettingsBtn = CreateCyberButton(victoryPanelObj.transform, "Btn_Settings", new Vector2(0f, -100f), new Vector2(400f, 48f), "SETTINGS", 18f, fontAsset);
-            Button vicMenuBtn = CreateCyberButton(victoryPanelObj.transform, "Btn_VictoryMenu", new Vector2(0f, -155f), new Vector2(400f, 48f), "MAIN MENU", 18f, fontAsset);
-
+            // Button 1 - Next Level (Standard Button: Width = 520, Height = 60): "Btn_NextLevel"
+            // Background Color: Mint/Emerald (#10B981), Text: "ADVANCE TO NEXT LEVEL" (Bold White, fontSize = 20)
+            Button nextLvlBtn = CreateFlatButton(victoryPanelObj.transform, "Btn_NextLevel", new Vector2(0f, 5f), new Vector2(520f, 60f), "ADVANCE TO NEXT LEVEL", ColorStartBtnEmerald, Color.white, 20f, ColorStartBtnHover, fontAsset);
             if (gm != null)
             {
                 while (nextLvlBtn.onClick.GetPersistentEventCount() > 0)
@@ -2461,29 +1968,27 @@ namespace GameJam.Editor
                     UnityEventTools.RemovePersistentListener(nextLvlBtn.onClick, 0);
                 }
                 UnityEventTools.AddPersistentListener(nextLvlBtn.onClick, gm.NextLevel);
+            }
 
-                while (replayBtn.onClick.GetPersistentEventCount() > 0)
-                {
-                    UnityEventTools.RemovePersistentListener(replayBtn.onClick, 0);
-                }
+            // Button 2 - Replay Sector (Standard Button: Width = 520, Height = 60): "Btn_Replay"
+            // Background Color: Slate (#1E293B), Text: "RETRY (R)" (Bold White, fontSize = 20)
+            Button replayBtn = CreateFlatButton(victoryPanelObj.transform, "Btn_Replay", new Vector2(0f, -65f), new Vector2(520f, 60f), "RETRY (R)", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
+            if (gm != null)
+            {
                 UnityEventTools.AddPersistentListener(replayBtn.onClick, gm.RestartGame);
+            }
 
-                while (vicSettingsBtn.onClick.GetPersistentEventCount() > 0)
-                {
-                    UnityEventTools.RemovePersistentListener(vicSettingsBtn.onClick, 0);
-                }
-                UnityEventTools.AddPersistentListener(vicSettingsBtn.onClick, gm.OpenSettingsFromVictory);
-
-                while (vicMenuBtn.onClick.GetPersistentEventCount() > 0)
-                {
-                    UnityEventTools.RemovePersistentListener(vicMenuBtn.onClick, 0);
-                }
+            // Button 3 - Main Menu (Standard Button: Width = 520, Height = 60): "Btn_VictoryMenu"
+            // Background Color: Slate (#1E293B), Text: "MAIN MENU" (Bold White, fontSize = 20)
+            Button vicMenuBtn = CreateFlatButton(victoryPanelObj.transform, "Btn_VictoryMenu", new Vector2(0f, -135f), new Vector2(520f, 60f), "MAIN MENU", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
+            if (gm != null)
+            {
                 UnityEventTools.AddPersistentListener(vicMenuBtn.onClick, gm.ExitToMenu);
             }
 
             victoryPanelObj.SetActive(false);
 
-            // 6. Build Pause Panel (Cyber Vector Palette, Timer Yellow #ffe600 accent)
+            // 6. Build Pause Panel (Fullscreen semi-transparent backdrop: Color(0.06f, 0.08f, 0.12f, 0.92f))
             GameObject pausePanelObj = new GameObject("PausePanel", typeof(RectTransform));
             pausePanelObj.transform.SetParent(canvasObj.transform, false);
             RectTransform pauseRect = pausePanelObj.GetComponent<RectTransform>();
@@ -2494,10 +1999,11 @@ namespace GameJam.Editor
             pauseRect.localScale = Vector3.one;
 
             Image pauseBg = pausePanelObj.AddComponent<Image>();
-            pauseBg.sprite = GetOrCreateCyberPanelSprite();
-            pauseBg.type = Image.Type.Sliced;
-            pauseBg.color = Color.white;
+            pauseBg.sprite = HealthBarUI.GetOrCreateWhiteSprite();
+            pauseBg.type = Image.Type.Simple;
+            pauseBg.color = ColorPausePanelBg;
 
+            // Title Text: TextMeshProUGUI (Pos: 0, 130; Size: 800, 70), text = "SYSTEM PAUSED", color = new Color(1f, 0.85f, 0.1f, 1f), fontSize = 46, fontStyle = Bold, alignment = Center.
             GameObject pauseTitleObj = new GameObject("Title_Text", typeof(RectTransform));
             pauseTitleObj.transform.SetParent(pausePanelObj.transform, false);
             RectTransform pauseTitleRect = pauseTitleObj.GetComponent<RectTransform>();
@@ -2510,37 +2016,26 @@ namespace GameJam.Editor
 
             TextMeshProUGUI pauseTitleTmp = pauseTitleObj.AddComponent<TextMeshProUGUI>();
             pauseTitleTmp.text = "SYSTEM PAUSED";
-            ConfigureTMPText(pauseTitleTmp, fontAsset, fontSize: 46f, alignment: TextAlignmentOptions.Center, color: ColorTimerYellow);
+            ConfigureTMPText(pauseTitleTmp, fontAsset, fontSize: 46f, alignment: TextAlignmentOptions.Center, color: ColorPauseTitleGold);
 
-            Button resumeBtn = CreateCyberButton(pausePanelObj.transform, "Btn_Resume", new Vector2(0f, 65f), new Vector2(380f, 52f), "RESUME (ESC)", 20f, fontAsset);
-            Button pauseSettingsBtn = CreateCyberButton(pausePanelObj.transform, "Btn_Settings", new Vector2(0f, 8f), new Vector2(380f, 48f), "SETTINGS", 18f, fontAsset);
-            Button pauseMenuBtn = CreateCyberButton(pausePanelObj.transform, "Btn_PauseMenu", new Vector2(0f, -48f), new Vector2(380f, 48f), "MAIN MENU", 18f, fontAsset);
-            Button quitBtn = CreateGlitchCrimsonButton(pausePanelObj.transform, "Btn_Quit", new Vector2(0f, -108f), new Vector2(380f, 48f), "EXIT GAME", 18f, fontAsset);
-
+            // Button 1 - Resume (Standard Button: Width = 520, Height = 60): "Btn_Resume" (Pos: 0, 40)
+            Button resumeBtn = CreateFlatButton(pausePanelObj.transform, "Btn_Resume", new Vector2(0f, 40f), new Vector2(520f, 60f), "RESUME (ESC)", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
             if (gm != null)
             {
-                while (resumeBtn.onClick.GetPersistentEventCount() > 0)
-                {
-                    UnityEventTools.RemovePersistentListener(resumeBtn.onClick, 0);
-                }
                 UnityEventTools.AddPersistentListener(resumeBtn.onClick, gm.ResumeGame);
+            }
 
-                while (pauseSettingsBtn.onClick.GetPersistentEventCount() > 0)
-                {
-                    UnityEventTools.RemovePersistentListener(pauseSettingsBtn.onClick, 0);
-                }
-                UnityEventTools.AddPersistentListener(pauseSettingsBtn.onClick, gm.OpenSettingsFromPause);
-
-                while (pauseMenuBtn.onClick.GetPersistentEventCount() > 0)
-                {
-                    UnityEventTools.RemovePersistentListener(pauseMenuBtn.onClick, 0);
-                }
+            // Button 2 - Main Menu (Standard Button: Width = 520, Height = 60): "Btn_PauseMenu" (Pos: 0, -40)
+            Button pauseMenuBtn = CreateFlatButton(pausePanelObj.transform, "Btn_PauseMenu", new Vector2(0f, -40f), new Vector2(520f, 60f), "MAIN MENU", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
+            if (gm != null)
+            {
                 UnityEventTools.AddPersistentListener(pauseMenuBtn.onClick, gm.ExitToMenu);
+            }
 
-                while (quitBtn.onClick.GetPersistentEventCount() > 0)
-                {
-                    UnityEventTools.RemovePersistentListener(quitBtn.onClick, 0);
-                }
+            // Button 3 - Exit Game (Standard Button: Width = 520, Height = 60): "Btn_Quit" (Pos: 0, -120)
+            Button quitBtn = CreateFlatButton(pausePanelObj.transform, "Btn_Quit", new Vector2(0f, -120f), new Vector2(520f, 60f), "EXIT GAME", ColorButtonCharcoal, Color.white, 20f, ColorButtonHoverHighlight, fontAsset);
+            if (gm != null)
+            {
                 UnityEventTools.AddPersistentListener(quitBtn.onClick, gm.QuitGame);
             }
 
@@ -2619,109 +2114,6 @@ namespace GameJam.Editor
                 }
             }
             Cursor.visible = true;
-
-            // Build ScreenEffectOverlay
-            Transform existingOverlay = canvasObj.transform.Find("ScreenEffectOverlay");
-            if (existingOverlay != null) Object.DestroyImmediate(existingOverlay.gameObject);
-
-            GameObject screenOverlayObj = new GameObject("ScreenEffectOverlay", typeof(RectTransform), typeof(Image));
-            screenOverlayObj.transform.SetParent(canvasObj.transform, false);
-            RectTransform soRt = screenOverlayObj.GetComponent<RectTransform>();
-            soRt.anchorMin = Vector2.zero;
-            soRt.anchorMax = Vector2.one;
-            soRt.offsetMin = Vector2.zero;
-            soRt.offsetMax = Vector2.zero;
-            soRt.localScale = Vector3.one;
-            Image soImg = screenOverlayObj.GetComponent<Image>();
-            soImg.sprite = HealthBarUI.GetOrCreateWhiteSprite();
-            soImg.color = Color.clear;
-            soImg.raycastTarget = false;
-            screenOverlayObj.SetActive(false);
-
-            // Build EyeFilterOverlay (Warm sepia/amber screen filter overlay)
-            Transform existingEyeOverlay = canvasObj.transform.Find("EyeFilterOverlay");
-            if (existingEyeOverlay != null) Object.DestroyImmediate(existingEyeOverlay.gameObject);
-
-            GameObject eyeFilterOverlayObj = new GameObject("EyeFilterOverlay", typeof(RectTransform), typeof(Image));
-            eyeFilterOverlayObj.transform.SetParent(canvasObj.transform, false);
-            RectTransform efRt = eyeFilterOverlayObj.GetComponent<RectTransform>();
-            efRt.anchorMin = Vector2.zero;
-            efRt.anchorMax = Vector2.one;
-            efRt.offsetMin = Vector2.zero;
-            efRt.offsetMax = Vector2.zero;
-            efRt.localScale = Vector3.one;
-            Image efImg = eyeFilterOverlayObj.GetComponent<Image>();
-            efImg.sprite = HealthBarUI.GetOrCreateWhiteSprite();
-            efImg.color = Color.clear;
-            efImg.raycastTarget = false;
-            eyeFilterOverlayObj.SetActive(false);
-
-            // Build Toast_Banner (Floating notification banner at bottom-center)
-            Transform existingToast = canvasObj.transform.Find("Toast_Banner");
-            if (existingToast != null) Object.DestroyImmediate(existingToast.gameObject);
-
-            GameObject toastObj = new GameObject("Toast_Banner", typeof(RectTransform));
-            toastObj.transform.SetParent(canvasObj.transform, false);
-            RectTransform toastRt = toastObj.GetComponent<RectTransform>();
-            toastRt.anchorMin = new Vector2(0.5f, 0f);
-            toastRt.anchorMax = new Vector2(0.5f, 0f);
-            toastRt.pivot = new Vector2(0.5f, 0f);
-            toastRt.anchoredPosition = new Vector2(0f, 45f);
-            toastRt.sizeDelta = new Vector2(420f, 44f);
-            toastRt.localScale = Vector3.one;
-
-            Image toastImg = toastObj.AddComponent<Image>();
-            toastImg.sprite = GetOrCreateCardRowSprite();
-            toastImg.type = Image.Type.Sliced;
-            toastImg.color = ColorToastBg; // #091A2F
-
-            CanvasGroup toastCg = toastObj.AddComponent<CanvasGroup>();
-            toastCg.alpha = 0f;
-            toastCg.blocksRaycasts = false;
-
-            GameObject toastTextObj = new GameObject("Toast_Text", typeof(RectTransform));
-            toastTextObj.transform.SetParent(toastObj.transform, false);
-            RectTransform ttRt = toastTextObj.GetComponent<RectTransform>();
-            ttRt.anchorMin = Vector2.zero;
-            ttRt.anchorMax = Vector2.one;
-            ttRt.offsetMin = new Vector2(16f, 0f);
-            ttRt.offsetMax = new Vector2(-16f, 0f);
-            ttRt.localScale = Vector3.one;
-
-            TextMeshProUGUI toastTmp = toastTextObj.AddComponent<TextMeshProUGUI>();
-            toastTmp.text = "";
-            ConfigureTMPText(toastTmp, fontAsset, fontSize: 14f, alignment: TextAlignmentOptions.Center, color: ColorSubtitleCyan);
-
-            toastObj.SetActive(false);
-
-            // Build UIManager & System Settings Modal Dialog
-            UIManager uiMgr = canvasObj.GetComponent<UIManager>() ?? canvasObj.AddComponent<UIManager>();
-            uiMgr.startMenuPanel = startMenuPanelObj;
-            uiMgr.hudPanel = hudPanelObj;
-            uiMgr.pausePanel = pausePanelObj;
-            uiMgr.gameOverPanel = gameOverPanelObj;
-            uiMgr.victoryPanel = victoryPanelObj;
-            uiMgr.eyeFilterOverlay = efImg;
-            uiMgr.eyeFilterButton = eyeFilterBtn;
-            uiMgr.eyeFilterButtonText = eyeFilterBtn.GetComponentInChildren<TextMeshProUGUI>();
-            uiMgr.audioQuickToggleBtn = audioToggleBtn;
-            uiMgr.audioQuickToggleText = audioToggleBtn.GetComponentInChildren<TextMeshProUGUI>();
-            uiMgr.toastBanner = toastObj;
-            uiMgr.toastCanvasGroup = toastCg;
-            uiMgr.toastText = toastTmp;
-
-            SettingsManager sm = gm != null ? (gm.GetComponent<SettingsManager>() ?? gm.gameObject.AddComponent<SettingsManager>()) : null;
-            if (sm != null)
-            {
-                sm.screenEffectOverlay = soImg;
-            }
-
-            GameObject settingsModalObj = BuildSettingsModalPanel(canvasObj, uiMgr, sm, fontAsset);
-            if (uiMgr != null)
-            {
-                uiMgr.settingsModalPanel = settingsModalObj;
-                uiMgr.BindUIEvents();
-            }
 
             // Ensure crisp UI quality across the canvas
             EnsureCrispUIQuality(canvas);
@@ -2877,8 +2269,7 @@ namespace GameJam.Editor
             cb.pressedColor = new Color(Mathf.Max(normalColor.r - 0.08f, 0f), Mathf.Max(normalColor.g - 0.08f, 0f), Mathf.Max(normalColor.b - 0.08f, 0f), normalColor.a);
             cb.disabledColor = new Color(0.2f, 0.2f, 0.2f, 0.5f);
             cb.colorMultiplier = 1f;
-            // Attach smooth hover scale effect (Vector3 scale 1.05x on pointer enter/select)
-            UIHoverScaleEffect hoverEffect = btnObj.GetComponent<UIHoverScaleEffect>() ?? btnObj.AddComponent<UIHoverScaleEffect>();
+            btn.colors = cb;
 
             // Layout element to guarantee button retains fixed dimensions inside layouts
             LayoutElement le = btnObj.GetComponent<LayoutElement>() ?? btnObj.AddComponent<LayoutElement>();
@@ -2911,415 +2302,11 @@ namespace GameJam.Editor
 
             TextMeshProUGUI labelTmp = labelObj.GetComponent<TextMeshProUGUI>() ?? labelObj.AddComponent<TextMeshProUGUI>();
             labelTmp.text = text;
-            labelTmp.textWrappingMode = TextWrappingModes.NoWrap;
+            labelTmp.enableWordWrapping = false;
             labelTmp.overflowMode = TextOverflowModes.Overflow;
             ConfigureTMPText(labelTmp, fontAsset, fontSize: fontSize, alignment: TextAlignmentOptions.Center, color: textColor);
 
             return btn;
-        }
-
-        private static Slider CreateFlatSlider(
-            Transform parent,
-            string name,
-            Vector2 anchoredPos,
-            Vector2 size,
-            float minValue,
-            float maxValue,
-            float defaultValue)
-        {
-            GameObject sliderObj = new GameObject(name, typeof(RectTransform));
-            sliderObj.transform.SetParent(parent, false);
-            RectTransform sliderRt = sliderObj.GetComponent<RectTransform>();
-            sliderRt.anchoredPosition = anchoredPos;
-            sliderRt.sizeDelta = size;
-            sliderRt.localScale = Vector3.one;
-
-            Sprite whiteSp = HealthBarUI.GetOrCreateWhiteSprite();
-
-            // Background
-            GameObject bgObj = new GameObject("Background", typeof(RectTransform), typeof(Image));
-            bgObj.transform.SetParent(sliderObj.transform, false);
-            RectTransform bgRt = bgObj.GetComponent<RectTransform>();
-            bgRt.anchorMin = new Vector2(0f, 0.35f);
-            bgRt.anchorMax = new Vector2(1f, 0.65f);
-            bgRt.offsetMin = Vector2.zero;
-            bgRt.offsetMax = Vector2.zero;
-            Image bgImg = bgObj.GetComponent<Image>();
-            bgImg.sprite = whiteSp;
-            bgImg.color = ColorButtonCharcoal;
-
-            // Fill Area
-            GameObject fillAreaObj = new GameObject("Fill Area", typeof(RectTransform));
-            fillAreaObj.transform.SetParent(sliderObj.transform, false);
-            RectTransform fillAreaRt = fillAreaObj.GetComponent<RectTransform>();
-            fillAreaRt.anchorMin = new Vector2(0f, 0.35f);
-            fillAreaRt.anchorMax = new Vector2(1f, 0.65f);
-            fillAreaRt.offsetMin = Vector2.zero;
-            fillAreaRt.offsetMax = Vector2.zero;
-
-            GameObject fillObj = new GameObject("Fill", typeof(RectTransform), typeof(Image));
-            fillObj.transform.SetParent(fillAreaObj.transform, false);
-            RectTransform fillRt = fillObj.GetComponent<RectTransform>();
-            fillRt.sizeDelta = Vector2.zero;
-            Image fillImg = fillObj.GetComponent<Image>();
-            fillImg.sprite = whiteSp;
-            fillImg.color = ColorElectricCyan;
-
-            // Handle Slide Area
-            GameObject handleAreaObj = new GameObject("Handle Slide Area", typeof(RectTransform));
-            handleAreaObj.transform.SetParent(sliderObj.transform, false);
-            RectTransform handleAreaRt = handleAreaObj.GetComponent<RectTransform>();
-            handleAreaRt.anchorMin = Vector2.zero;
-            handleAreaRt.anchorMax = Vector2.one;
-            handleAreaRt.offsetMin = new Vector2(8f, 0f);
-            handleAreaRt.offsetMax = new Vector2(-8f, 0f);
-
-            GameObject handleObj = new GameObject("Handle", typeof(RectTransform), typeof(Image));
-            handleObj.transform.SetParent(handleAreaObj.transform, false);
-            RectTransform handleRt = handleObj.GetComponent<RectTransform>();
-            handleRt.sizeDelta = new Vector2(18f, 0f);
-            Image handleImg = handleObj.GetComponent<Image>();
-            handleImg.sprite = whiteSp;
-            handleImg.color = Color.white;
-
-            Slider slider = sliderObj.AddComponent<Slider>();
-            slider.fillRect = fillRt;
-            slider.handleRect = handleRt;
-            slider.targetGraphic = handleImg;
-            slider.direction = Slider.Direction.LeftToRight;
-            slider.minValue = minValue;
-            slider.maxValue = maxValue;
-            slider.value = defaultValue;
-
-            return slider;
-        }
-
-        private static TextMeshProUGUI CreateLabel(
-            Transform parent,
-            string name,
-            Vector2 anchoredPos,
-            Vector2 size,
-            string text,
-            TMP_FontAsset fontAsset,
-            float fontSize = 18f,
-            TextAlignmentOptions alignment = TextAlignmentOptions.Left,
-            Color? color = null)
-        {
-            GameObject labelObj = new GameObject(name, typeof(RectTransform));
-            labelObj.transform.SetParent(parent, false);
-            RectTransform rt = labelObj.GetComponent<RectTransform>();
-            rt.anchoredPosition = anchoredPos;
-            rt.sizeDelta = size;
-            rt.localScale = Vector3.one;
-
-            TextMeshProUGUI tmp = labelObj.AddComponent<TextMeshProUGUI>();
-            tmp.text = text;
-            ConfigureTMPText(tmp, fontAsset, fontSize: fontSize, alignment: alignment, color: color ?? Color.white);
-            return tmp;
-        }
-
-        private static GameObject BuildSettingsModalPanel(GameObject canvasObj, UIManager uiMgr, SettingsManager sm, TMP_FontAsset fontAsset)
-        {
-            if (canvasObj == null) return null;
-
-            Transform oldSettings = canvasObj.transform.Find("SettingsPanel");
-            if (oldSettings != null) Object.DestroyImmediate(oldSettings.gameObject);
-            Transform oldModal = canvasObj.transform.Find("SettingsModalPanel");
-            if (oldModal != null) Object.DestroyImmediate(oldModal.gameObject);
-
-            // Fullscreen Modal Backdrop: #050E1C at 75% opacity
-            GameObject settingsPanelObj = new GameObject("SettingsModalPanel", typeof(RectTransform));
-            settingsPanelObj.transform.SetParent(canvasObj.transform, false);
-            RectTransform spRt = settingsPanelObj.GetComponent<RectTransform>();
-            spRt.anchorMin = Vector2.zero;
-            spRt.anchorMax = Vector2.one;
-            spRt.offsetMin = Vector2.zero;
-            spRt.offsetMax = Vector2.zero;
-            spRt.localScale = Vector3.one;
-
-            Image spBg = settingsPanelObj.AddComponent<Image>();
-            spBg.sprite = HealthBarUI.GetOrCreateWhiteSprite();
-            spBg.type = Image.Type.Simple;
-            spBg.color = ColorDarkBackdrop; // #000000 with 0.8 alpha
-
-            // Centered Modal Dialog Card: Width 580, Height 540
-            GameObject dialogObj = new GameObject("ModalDialog", typeof(RectTransform));
-            dialogObj.transform.SetParent(settingsPanelObj.transform, false);
-            RectTransform dialogRt = dialogObj.GetComponent<RectTransform>();
-            dialogRt.anchorMin = new Vector2(0.5f, 0.5f);
-            dialogRt.anchorMax = new Vector2(0.5f, 0.5f);
-            dialogRt.pivot = new Vector2(0.5f, 0.5f);
-            dialogRt.anchoredPosition = Vector2.zero;
-            dialogRt.sizeDelta = new Vector2(580f, 540f);
-            dialogRt.localScale = Vector3.one;
-
-            Image dialogImg = dialogObj.AddComponent<Image>();
-            dialogImg.sprite = GetOrCreateCyberPanelSprite();
-            dialogImg.type = Image.Type.Sliced;
-            dialogImg.color = Color.white; // #0f141d background with #1e293b border
-
-            // Title: "SYSTEM SETTINGS"
-            CreateLabel(dialogObj.transform, "Title_Text", new Vector2(0f, 235f), new Vector2(400f, 34f), "SYSTEM SETTINGS", fontAsset, 22f, TextAlignmentOptions.Center, ColorCrispWhite);
-
-            // Close button (X) in top right
-            Button closeXBtn = CreateCyberButton(dialogObj.transform, "Btn_CloseModal", new Vector2(255f, 235f), new Vector2(34f, 34f), "X", 16f, fontAsset);
-
-            // Tabs Button Row: "AUDIO & DISPLAY" and "CONTROLS"
-            GameObject tabsRowObj = new GameObject("Tabs_Row", typeof(RectTransform));
-            tabsRowObj.transform.SetParent(dialogObj.transform, false);
-            RectTransform tabsRowRt = tabsRowObj.GetComponent<RectTransform>();
-            tabsRowRt.anchoredPosition = new Vector2(0f, 185f);
-            tabsRowRt.sizeDelta = new Vector2(520f, 38f);
-            tabsRowRt.localScale = Vector3.one;
-
-            HorizontalLayoutGroup tabsHlg = tabsRowObj.AddComponent<HorizontalLayoutGroup>();
-            tabsHlg.spacing = 12f;
-            tabsHlg.childAlignment = TextAnchor.MiddleCenter;
-            tabsHlg.childControlWidth = false;
-            tabsHlg.childControlHeight = false;
-            tabsHlg.childForceExpandWidth = false;
-            tabsHlg.childForceExpandHeight = false;
-
-            Button tabAudioBtn = CreateCyberButton(tabsRowObj.transform, "Btn_TabAudioDisplay", Vector2.zero, new Vector2(250f, 38f), "AUDIO & DISPLAY", 15f, fontAsset);
-            Button tabCtrlBtn = CreateCyberButton(tabsRowObj.transform, "Btn_TabControls", Vector2.zero, new Vector2(250f, 38f), "CONTROLS", 15f, fontAsset);
-
-            // ==================== TAB 1: AUDIO & DISPLAY ====================
-            GameObject tabAudioObj = new GameObject("TabContent_AudioDisplay", typeof(RectTransform));
-            tabAudioObj.transform.SetParent(dialogObj.transform, false);
-            RectTransform taoRt = tabAudioObj.GetComponent<RectTransform>();
-            taoRt.anchoredPosition = new Vector2(0f, -12f);
-            taoRt.sizeDelta = new Vector2(520f, 320f);
-            taoRt.localScale = Vector3.one;
-
-            VerticalLayoutGroup taoVlg = tabAudioObj.AddComponent<VerticalLayoutGroup>();
-            taoVlg.spacing = 10f;
-            taoVlg.childAlignment = TextAnchor.UpperCenter;
-            taoVlg.childControlWidth = false;
-            taoVlg.childControlHeight = false;
-            taoVlg.childForceExpandWidth = false;
-            taoVlg.childForceExpandHeight = false;
-
-            // Row 1: Master Volume
-            GameObject rowVolObj = new GameObject("Row_Volume", typeof(RectTransform));
-            rowVolObj.transform.SetParent(tabAudioObj.transform, false);
-            RectTransform rvRt = rowVolObj.GetComponent<RectTransform>();
-            rvRt.sizeDelta = new Vector2(520f, 52f);
-            rvRt.localScale = Vector3.one;
-            Image rvImg = rowVolObj.AddComponent<Image>();
-            rvImg.sprite = GetOrCreateCyberCardRowSprite();
-            rvImg.type = Image.Type.Sliced;
-            rvImg.color = Color.white;
-
-            CreateLabel(rowVolObj.transform, "Label_Volume", new Vector2(-155f, 0f), new Vector2(160f, 30f), "MASTER VOLUME", fontAsset, 14f, TextAlignmentOptions.Left, ColorCrispWhite);
-            Slider volSlider = CreateFlatSlider(rowVolObj.transform, "Slider_Volume", new Vector2(10f, 0f), new Vector2(160f, 20f), 0f, 1f, sm != null ? sm.volume : 1f);
-            TextMeshProUGUI volValTmp = CreateLabel(rowVolObj.transform, "Value_Volume", new Vector2(125f, 0f), new Vector2(50f, 30f), "100%", fontAsset, 14f, TextAlignmentOptions.Center, ColorElectricCyan);
-            Button muteBtn = CreateCyberButton(rowVolObj.transform, "Btn_ToggleMute", new Vector2(205f, 0f), new Vector2(80f, 32f), "MUTE", 13f, fontAsset);
-
-            // Row 2: Display Brightness
-            GameObject rowBrightObj = new GameObject("Row_Brightness", typeof(RectTransform));
-            rowBrightObj.transform.SetParent(tabAudioObj.transform, false);
-            RectTransform rbRt = rowBrightObj.GetComponent<RectTransform>();
-            rbRt.sizeDelta = new Vector2(520f, 52f);
-            rbRt.localScale = Vector3.one;
-            Image rbImg = rowBrightObj.AddComponent<Image>();
-            rbImg.sprite = GetOrCreateCyberCardRowSprite();
-            rbImg.type = Image.Type.Sliced;
-            rbImg.color = Color.white;
-
-            CreateLabel(rowBrightObj.transform, "Label_Brightness", new Vector2(-155f, 0f), new Vector2(160f, 30f), "BRIGHTNESS", fontAsset, 14f, TextAlignmentOptions.Left, ColorCrispWhite);
-            Slider brightSlider = CreateFlatSlider(rowBrightObj.transform, "Slider_Brightness", new Vector2(30f, 0f), new Vector2(210f, 20f), 0f, 2f, sm != null ? sm.brightness : 1f);
-            TextMeshProUGUI brightValTmp = CreateLabel(rowBrightObj.transform, "Value_Brightness", new Vector2(195f, 0f), new Vector2(65f, 30f), "100%", fontAsset, 14f, TextAlignmentOptions.Center, ColorElectricCyan);
-
-            // Row 3: Display Contrast
-            GameObject rowContrastObj = new GameObject("Row_Contrast", typeof(RectTransform));
-            rowContrastObj.transform.SetParent(tabAudioObj.transform, false);
-            RectTransform rcRt = rowContrastObj.GetComponent<RectTransform>();
-            rcRt.sizeDelta = new Vector2(520f, 52f);
-            rcRt.localScale = Vector3.one;
-            Image rcImg = rowContrastObj.AddComponent<Image>();
-            rcImg.sprite = GetOrCreateCyberCardRowSprite();
-            rcImg.type = Image.Type.Sliced;
-            rcImg.color = Color.white;
-
-            CreateLabel(rowContrastObj.transform, "Label_Contrast", new Vector2(-155f, 0f), new Vector2(160f, 30f), "CONTRAST", fontAsset, 14f, TextAlignmentOptions.Left, ColorCrispWhite);
-            Slider contrastSlider = CreateFlatSlider(rowContrastObj.transform, "Slider_Contrast", new Vector2(30f, 0f), new Vector2(210f, 20f), 0.5f, 1.5f, sm != null ? sm.contrast : 1f);
-            TextMeshProUGUI contrastValTmp = CreateLabel(rowContrastObj.transform, "Value_Contrast", new Vector2(195f, 0f), new Vector2(65f, 30f), "100%", fontAsset, 14f, TextAlignmentOptions.Center, ColorElectricCyan);
-
-            // Row 4: Graphics Quality
-            GameObject rowQualityObj = new GameObject("Row_Quality", typeof(RectTransform));
-            rowQualityObj.transform.SetParent(tabAudioObj.transform, false);
-            RectTransform rqRt = rowQualityObj.GetComponent<RectTransform>();
-            rqRt.sizeDelta = new Vector2(520f, 52f);
-            rqRt.localScale = Vector3.one;
-            Image rqImg = rowQualityObj.AddComponent<Image>();
-            rqImg.sprite = GetOrCreateCyberCardRowSprite();
-            rqImg.type = Image.Type.Sliced;
-            rqImg.color = Color.white;
-
-            CreateLabel(rowQualityObj.transform, "Label_Quality", new Vector2(-155f, 0f), new Vector2(160f, 30f), "GRAPHICS QUALITY", fontAsset, 14f, TextAlignmentOptions.Left, ColorCrispWhite);
-            Button qLowBtn = CreateCyberButton(rowQualityObj.transform, "Btn_QualityLow", new Vector2(40f, 0f), new Vector2(68f, 32f), "LOW", 13f, fontAsset);
-            Button qMedBtn = CreateCyberButton(rowQualityObj.transform, "Btn_QualityMed", new Vector2(118f, 0f), new Vector2(68f, 32f), "MED", 13f, fontAsset);
-            Button qHighBtn = CreateCyberButton(rowQualityObj.transform, "Btn_QualityHigh", new Vector2(196f, 0f), new Vector2(68f, 32f), "HIGH", 13f, fontAsset);
-
-            // ==================== TAB 2: CONTROLS ====================
-            GameObject tabCtrlObj = new GameObject("TabContent_Controls", typeof(RectTransform));
-            tabCtrlObj.transform.SetParent(dialogObj.transform, false);
-            RectTransform tcoRt = tabCtrlObj.GetComponent<RectTransform>();
-            tcoRt.anchoredPosition = new Vector2(0f, -12f);
-            tcoRt.sizeDelta = new Vector2(520f, 320f);
-            tcoRt.localScale = Vector3.one;
-
-            VerticalLayoutGroup tcoVlg = tabCtrlObj.AddComponent<VerticalLayoutGroup>();
-            tcoVlg.spacing = 10f;
-            tcoVlg.childAlignment = TextAnchor.UpperCenter;
-            tcoVlg.childControlWidth = false;
-            tcoVlg.childControlHeight = false;
-            tcoVlg.childForceExpandWidth = false;
-            tcoVlg.childForceExpandHeight = false;
-
-            // Row 1: Movement Keys
-            GameObject rowMoveObj = new GameObject("Row_Movement", typeof(RectTransform));
-            rowMoveObj.transform.SetParent(tabCtrlObj.transform, false);
-            RectTransform rmovRt = rowMoveObj.GetComponent<RectTransform>();
-            rmovRt.sizeDelta = new Vector2(520f, 52f);
-            rmovRt.localScale = Vector3.one;
-            Image rmovImg = rowMoveObj.AddComponent<Image>();
-            rmovImg.sprite = GetOrCreateCyberCardRowSprite();
-            rmovImg.type = Image.Type.Sliced;
-            rmovImg.color = Color.white;
-
-            CreateLabel(rowMoveObj.transform, "Label_Movement", new Vector2(-155f, 0f), new Vector2(160f, 30f), "MOVEMENT KEYS", fontAsset, 14f, TextAlignmentOptions.Left, ColorCrispWhite);
-            Button wasdBtn = CreateCyberButton(rowMoveObj.transform, "Btn_MoveWASD", new Vector2(30f, 0f), new Vector2(72f, 32f), "WASD", 13f, fontAsset);
-            Button arrowsBtn = CreateCyberButton(rowMoveObj.transform, "Btn_MoveArrows", new Vector2(112f, 0f), new Vector2(76f, 32f), "ARROWS", 13f, fontAsset);
-            Button bothBtn = CreateCyberButton(rowMoveObj.transform, "Btn_MoveBoth", new Vector2(196f, 0f), new Vector2(72f, 32f), "BOTH", 13f, fontAsset);
-
-            // Row 2: Primary Action Binding
-            GameObject rowPriActObj = new GameObject("Row_PrimaryAction", typeof(RectTransform));
-            rowPriActObj.transform.SetParent(tabCtrlObj.transform, false);
-            RectTransform rpaRt = rowPriActObj.GetComponent<RectTransform>();
-            rpaRt.sizeDelta = new Vector2(520f, 52f);
-            rpaRt.localScale = Vector3.one;
-            Image rpaImg = rowPriActObj.AddComponent<Image>();
-            rpaImg.sprite = GetOrCreateCyberCardRowSprite();
-            rpaImg.type = Image.Type.Sliced;
-            rpaImg.color = Color.white;
-
-            CreateLabel(rowPriActObj.transform, "Label_PrimaryAct", new Vector2(-155f, 0f), new Vector2(160f, 30f), "PRIMARY FIRE", fontAsset, 14f, TextAlignmentOptions.Left, ColorCrispWhite);
-            Button priMouseBtn = CreateCyberButton(rowPriActObj.transform, "Btn_PrimaryMouse", new Vector2(120f, 0f), new Vector2(210f, 32f), "PRIMARY: LEFT CLICK", 13f, fontAsset);
-
-            // Row 3: Secondary Action Binding
-            GameObject rowSecActObj = new GameObject("Row_SecondaryAction", typeof(RectTransform));
-            rowSecActObj.transform.SetParent(tabCtrlObj.transform, false);
-            RectTransform rsaRt = rowSecActObj.GetComponent<RectTransform>();
-            rsaRt.sizeDelta = new Vector2(520f, 52f);
-            rsaRt.localScale = Vector3.one;
-            Image rsaImg = rowSecActObj.AddComponent<Image>();
-            rsaImg.sprite = GetOrCreateCyberCardRowSprite();
-            rsaImg.type = Image.Type.Sliced;
-            rsaImg.color = Color.white;
-
-            CreateLabel(rowSecActObj.transform, "Label_SecondaryAct", new Vector2(-155f, 0f), new Vector2(160f, 30f), "NEURAL TETHER", fontAsset, 14f, TextAlignmentOptions.Left, ColorCrispWhite);
-            Button secMouseBtn = CreateCyberButton(rowSecActObj.transform, "Btn_SecondaryMouse", new Vector2(120f, 0f), new Vector2(210f, 32f), "SECONDARY: RIGHT CLICK", 13f, fontAsset);
-
-            // Row 4: Keybind Preview Overview
-            GameObject rowPreviewObj = new GameObject("Row_KeybindPreview", typeof(RectTransform));
-            rowPreviewObj.transform.SetParent(tabCtrlObj.transform, false);
-            RectTransform rprevRt = rowPreviewObj.GetComponent<RectTransform>();
-            rprevRt.sizeDelta = new Vector2(520f, 68f);
-            rprevRt.localScale = Vector3.one;
-            Image rprevImg = rowPreviewObj.AddComponent<Image>();
-            rprevImg.sprite = GetOrCreateCyberCardRowSprite();
-            rprevImg.type = Image.Type.Sliced;
-            rprevImg.color = Color.white;
-
-            TextMeshProUGUI keybindPreviewTmp = CreateLabel(rowPreviewObj.transform, "KeybindPreview_Text", Vector2.zero, new Vector2(500f, 60f), "", fontAsset, 12f, TextAlignmentOptions.Center, ColorCrispWhite);
-
-            tabCtrlObj.SetActive(false); // Tab 1 active by default
-
-            // ==================== BOTTOM ACTION ROW ====================
-            GameObject btmRowObj = new GameObject("BottomActionRow", typeof(RectTransform));
-            btmRowObj.transform.SetParent(dialogObj.transform, false);
-            RectTransform btmRt = btmRowObj.GetComponent<RectTransform>();
-            btmRt.anchoredPosition = new Vector2(0f, -225f);
-            btmRt.sizeDelta = new Vector2(520f, 44f);
-            btmRt.localScale = Vector3.one;
-
-            HorizontalLayoutGroup btmHlg = btmRowObj.AddComponent<HorizontalLayoutGroup>();
-            btmHlg.spacing = 16f;
-            btmHlg.childAlignment = TextAnchor.MiddleCenter;
-            btmHlg.childControlWidth = false;
-            btmHlg.childControlHeight = false;
-            btmHlg.childForceExpandWidth = false;
-            btmHlg.childForceExpandHeight = false;
-
-            Button backBtn = CreateCyberButton(btmRowObj.transform, "Btn_ApplyClose", Vector2.zero, new Vector2(280f, 42f), "BACK", 16f, fontAsset);
-            Button resetBtn = CreateGlitchCrimsonButton(btmRowObj.transform, "Btn_ResetDefaults", Vector2.zero, new Vector2(180f, 42f), "RESET DEFAULTS", 14f, fontAsset);
-
-            // Wire to SettingsManager
-            if (sm != null)
-            {
-                sm.settingsPanel = settingsPanelObj;
-                sm.tabDisplayAudioObj = tabAudioObj;
-                sm.tabControlsObj = tabCtrlObj;
-                sm.tabDisplayAudioBtn = tabAudioBtn;
-                sm.tabControlsBtn = tabCtrlBtn;
-                sm.tabDisplayAudioImg = tabAudioBtn.GetComponent<Image>();
-                sm.tabControlsImg = tabCtrlBtn.GetComponent<Image>();
-                sm.tabDisplayAudioText = tabAudioBtn.GetComponentInChildren<TextMeshProUGUI>();
-                sm.tabControlsText = tabCtrlBtn.GetComponentInChildren<TextMeshProUGUI>();
-
-                sm.volumeSlider = volSlider;
-                sm.volumeValueText = volValTmp;
-                sm.muteButton = muteBtn;
-                sm.muteButtonText = muteBtn.GetComponentInChildren<TextMeshProUGUI>();
-
-                sm.brightnessSlider = brightSlider;
-                sm.brightnessValueText = brightValTmp;
-
-                sm.contrastSlider = contrastSlider;
-                sm.contrastValueText = contrastValTmp;
-
-                sm.qualityLowBtn = qLowBtn;
-                sm.qualityMedBtn = qMedBtn;
-                sm.qualityHighBtn = qHighBtn;
-                sm.qualityLowImg = qLowBtn.GetComponent<Image>();
-                sm.qualityMedImg = qMedBtn.GetComponent<Image>();
-                sm.qualityHighImg = qHighBtn.GetComponent<Image>();
-
-                sm.moveWasdBtn = wasdBtn;
-                sm.moveArrowsBtn = arrowsBtn;
-                sm.moveBothBtn = bothBtn;
-                sm.moveWasdImg = wasdBtn.GetComponent<Image>();
-                sm.moveArrowsImg = arrowsBtn.GetComponent<Image>();
-                sm.moveBothImg = bothBtn.GetComponent<Image>();
-
-                sm.mousePrimaryBtn = priMouseBtn;
-                sm.mousePrimaryText = priMouseBtn.GetComponentInChildren<TextMeshProUGUI>();
-                sm.mouseSecondaryBtn = secMouseBtn;
-                sm.mouseSecondaryText = secMouseBtn.GetComponentInChildren<TextMeshProUGUI>();
-
-                sm.keybindPreviewText = keybindPreviewTmp;
-                sm.backButton = backBtn;
-                sm.resetDefaultsButton = resetBtn;
-
-                sm.BindUIEvents();
-                sm.SwitchTab(0);
-                sm.UpdateUIFromSettings();
-            }
-
-            // Wire to UIManager
-            if (uiMgr != null)
-            {
-                uiMgr.settingsModalPanel = settingsPanelObj;
-                uiMgr.masterVolumeSlider = volSlider;
-                uiMgr.masterVolumeValueText = volValTmp;
-                uiMgr.applyCloseBtn = backBtn;
-                uiMgr.modalCloseXBtn = closeXBtn;
-                uiMgr.BindUIEvents();
-            }
-
-            settingsPanelObj.SetActive(false);
-            return settingsPanelObj;
         }
 
         private static Sprite LoadSprite(string assetPath)
@@ -3391,7 +2378,7 @@ namespace GameJam.Editor
             }
 
             // Enforce Modal Panels: Fullscreen anchors (0, 0 to 1, 1)
-            string[] modalPanelNames = new string[] { "StartPanel", "StartMenuPanel", "GameOverPanel", "VictoryPanel", "PausePanel", "SettingsPanel", "SettingsModalPanel" };
+            string[] modalPanelNames = new string[] { "StartPanel", "GameOverPanel", "VictoryPanel", "PausePanel" };
             foreach (string panelName in modalPanelNames)
             {
                 Transform pt = canvas.transform.Find(panelName);
@@ -3435,9 +2422,8 @@ namespace GameJam.Editor
                 {
                     tmp.font = fontAsset;
                 }
-                tmp.fontStyle = FontStyles.Bold;
 
-                tmp.textWrappingMode = TextWrappingModes.NoWrap;
+                tmp.enableWordWrapping = false;
                 tmp.overflowMode = TextOverflowModes.Overflow;
                 tmp.enableAutoSizing = false;
 
@@ -3461,53 +2447,10 @@ namespace GameJam.Editor
                 string goName = tmp.gameObject.name;
                 Transform p = tmp.transform.parent;
                 bool isButton = (p != null && p.GetComponent<Button>() != null) || goName.StartsWith("Btn_");
-                bool isStartBtn = goName == "Btn_Start" || goName == "Btn_StartMission" || (p != null && (p.name == "Btn_Start" || p.name == "Btn_StartMission"));
+                bool isStartBtn = goName == "Btn_Start" || (p != null && p.name == "Btn_Start");
                 bool isTitle = goName.Contains("Title") || goName.Contains("Header");
 
-                if (goName == "Badge_Version")
-                {
-                    tmp.fontSize = 15f;
-                }
-                else if (goName == "Tagline_Text")
-                {
-                    tmp.fontSize = 16f;
-                    tmp.characterSpacing = 28f;
-                }
-                else if (goName == "Title_Main" || goName == "Title_Glow")
-                {
-                    tmp.fontSize = 68f;
-                    tmp.characterSpacing = 4f;
-                }
-                else if (goName == "Subtitle_Text")
-                {
-                    tmp.fontSize = 20f;
-                    tmp.characterSpacing = 8f;
-                }
-                else if (goName == "Title_Text_1" || goName == "Title_Text_2")
-                {
-                    tmp.fontSize = 72f;
-                }
-                else if (goName.StartsWith("Footer_"))
-                {
-                    tmp.fontSize = 13f;
-                }
-                else if (goName == "Btn_AudioQuickToggle" || (p != null && p.name == "Btn_AudioQuickToggle"))
-                {
-                    tmp.fontSize = 14f;
-                }
-                else if (goName == "Btn_EyeFilter" || (p != null && p.name == "Btn_EyeFilter"))
-                {
-                    tmp.fontSize = 13f;
-                }
-                else if (goName == "Btn_ApplyClose" || (p != null && p.name == "Btn_ApplyClose"))
-                {
-                    tmp.fontSize = 18f;
-                }
-                else if (goName == "Btn_CloseModal" || (p != null && p.name == "Btn_CloseModal"))
-                {
-                    tmp.fontSize = 16f;
-                }
-                else if (goName == "Btn_NextLevel" || (p != null && p.name == "Btn_NextLevel"))
+                if (goName == "Btn_NextLevel" || (p != null && p.name == "Btn_NextLevel"))
                 {
                     tmp.fontSize = 20f;
                 }
@@ -3527,27 +2470,23 @@ namespace GameJam.Editor
                 {
                     tmp.fontSize = 20f;
                 }
-                else if (isStartBtn)
-                {
-                    tmp.fontSize = 24f;
-                }
                 else if (isTitle)
                 {
                     tmp.fontSize = 56f;
                 }
-                else if (goName == "Timer_Text")
+                else if (isStartBtn)
                 {
-                    tmp.fontSize = 34f;
-                }
-                else if (goName == "Score_Text" || goName.Contains("Score"))
-                {
-                    tmp.fontSize = 24f;
-                }
-                else if (goName == "HP_Text")
-                {
-                    tmp.fontSize = 18f;
+                    tmp.fontSize = 26f;
                 }
                 else if (isButton)
+                {
+                    tmp.fontSize = 22f;
+                }
+                else if (goName == "Timer_Text" || goName.Contains("Score"))
+                {
+                    tmp.fontSize = 32f;
+                }
+                else if (goName == "HP_Text")
                 {
                     tmp.fontSize = 18f;
                 }
@@ -3563,7 +2502,7 @@ namespace GameJam.Editor
                 {
                     if (tmp.fontSize <= 0f || tmp.fontSize > 30f)
                     {
-                        tmp.fontSize = 18f;
+                        tmp.fontSize = 22f;
                     }
                 }
 
